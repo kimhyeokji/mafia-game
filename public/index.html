@@ -21,7 +21,7 @@
       color: var(--text-white); height: 100vh; display: flex; flex-direction: column; overflow: hidden;
       transition: background 1.5s ease-in-out;
     }
-    body.phase-night { background: linear-gradient(135deg, #121212, #000000); }
+    body.phase-night { background: linear-gradient(135deg, #0c0003, #000000); }
     body.phase-trial { background: linear-gradient(135deg, #3b0712, #1a0b1c); }
 
     .glass-panel {
@@ -83,9 +83,9 @@
 </head>
 <body>
   
-  <!-- BGM 세팅: 낮, 으스스하지만 고요한 밤(서스펜스), 투표 -->
-  <audio id="bgmDay" loop src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"></audio>
-  <audio id="bgmNight" loop src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3"></audio> 
+  <!-- 낮(추리), 밤(드론 앰비언트), 해명석(초침) BGM -->
+  <audio id="bgmDay" loop src="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3"></audio>
+  <audio id="bgmNight" loop src="https://cdn.pixabay.com/download/audio/2021/08/09/audio_8dfdf3692d.mp3"></audio> 
   <audio id="bgmTrial" loop src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3"></audio>
 
   <div class="marquee-container hidden" id="marqueeBox">
@@ -94,7 +94,6 @@
 
   <div class="app-screen">
     <div style="position: absolute; top: 14px; right: 14px; z-index: 50; display: flex; gap: 8px;">
-      <!-- 수첩 버튼 (메모 및 자동 로그) -->
       <button class="glass-panel hidden" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="toggleMemo()" id="memoBtn">📝 수첩</button>
       <button class="glass-panel" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="toggleBGM()" id="bgmBtn">🔊 BGM 켜짐</button>
       <button class="glass-panel" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="document.getElementById('guideModal').classList.remove('hidden')">📖 도감</button>
@@ -150,7 +149,6 @@
     <div id="viewMainGame" class="hidden">
       <div class="player-grid" id="playerGrid"></div>
       
-      <!-- 귓속말 전용 UI 박스 -->
       <div id="whisperSection" class="custom-box glass-panel hidden" style="margin-bottom:16px; padding:12px; max-width:100%;">
         <div style="font-size: 13px; color: #7cb5ec; display: flex; justify-content: space-between; margin-bottom:10px;">
           <span>💬 [<b id="whisperTargetName" style="color:var(--moon-gold)">상대방</b>]에게 은밀히 쪽지 보내기</span>
@@ -179,7 +177,6 @@
 
   <div class="action-panel" id="actionPanel"></div>
 
-  <!-- 역할 엿보기 꾹 누르기 모달 -->
   <div class="modal-overlay hidden" id="roleModal">
     <div class="custom-box glass-panel">
       <div style="font-size: 18px; font-weight: bold; color:var(--moon-gold);">🔒 당신의 비밀 역할</div>
@@ -201,7 +198,6 @@
     </div>
   </div>
 
-  <!-- 나만의 비밀 수첩 (로그 저장소) -->
   <div class="modal-overlay hidden" id="memoModal">
     <div class="custom-box glass-panel" style="width:90%; height:70%; display:flex; flex-direction:column; padding:16px; margin:auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -213,7 +209,6 @@
     </div>
   </div>
 
-  <!-- 투표 결과 모달 (방장이 닫아야 넘어감) -->
   <div class="modal-overlay hidden" id="voteSummaryModal">
     <div class="custom-box glass-panel" style="max-height:80vh; overflow-y:auto;">
       <h3 style="color:var(--blood-glow); margin-bottom:14px; font-size:18px;">🗳️ 투표 결과 보고서</h3>
@@ -269,7 +264,7 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_v4_final';
+    const TOKEN_KEY = 'mafia_token_v4_final_master';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
@@ -279,9 +274,9 @@
 
     let isBgmEnabled = true;
     function unlockAudio() {
-      let day = document.getElementById('bgmDay'); day.volume = 0.25;
-      let night = document.getElementById('bgmNight'); night.volume = 0.15; // 밤은 아주 잔잔하게
-      let trial = document.getElementById('bgmTrial'); trial.volume = 0.25;
+      let day = document.getElementById('bgmDay'); day.volume = 0.2;
+      let night = document.getElementById('bgmNight'); night.volume = 0.15;
+      let trial = document.getElementById('bgmTrial'); trial.volume = 0.2;
       
       [day, night, trial].forEach(el => {
         el.play().then(() => el.pause()).catch(e => console.log(e));
@@ -313,9 +308,7 @@
       }
     }
 
-    function toggleMemo() {
-      document.getElementById('memoModal').classList.toggle('hidden');
-    }
+    function toggleMemo() { document.getElementById('memoModal').classList.toggle('hidden'); }
 
     function createRoom() {
       unlockAudio();
