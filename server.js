@@ -11,7 +11,6 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
-
 const AVATARS = ['🐶','🐱','🦊','🐻','🐰','🐼','🦁','🐯','🐸','🐵','🦄','🦉','🐙','🦖','👽'];
 
 function generateRoomCode() {
@@ -52,7 +51,7 @@ function checkWinCondition(room) {
   return null;
 }
 
-function generateEvidence(room, deadPlayers) {
+function generateEvidence(room) {
   const alive = room.players.filter(p => !p.isDead);
   if (alive.length === 0) return null;
   
@@ -128,7 +127,7 @@ function resolveNight(room) {
     if (p && !p.isDead) { p.isDead = true; killedNames.push(p.name); }
   });
 
-  let evidence = generateEvidence(room, killedNames);
+  let evidence = generateEvidence(room);
   if (evidence) io.to(evidence.receiverId).emit('evidence_received', evidence.text);
 
   const winner = checkWinCondition(room);
@@ -145,11 +144,11 @@ function resolveNight(room) {
 
   room.goldenBellActive = false;
   room.goldenBellTimeout = setTimeout(() => {
-    let dots = Math.floor(Math.random() * 5) + 4; // 4~8개 파란점
+    let dots = Math.floor(Math.random() * 5) + 4;
     room.goldenBellActive = true;
     room.goldenBellAnswer = dots;
     io.to(room.code).emit('golden_bell_start', { dots });
-  }, 30000); // 낮 시작 30초 후 발동
+  }, 30000);
 
   startPhaseTimer(room, room.talkTime, () => startVote1(room));
 }
@@ -432,4 +431,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('마피아 마스터 서버 가동: 포트 ' + PORT));
+server.listen(PORT, () => console.log('마피아 마스터 서버 가동 완료: 포트 ' + PORT));
