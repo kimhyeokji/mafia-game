@@ -2,8 +2,8 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>마피아: 침묵의 교실</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>의령여고 마피아의 밤</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     :root {
@@ -20,9 +20,26 @@
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif; }
-    body { background-color: var(--bg-dark); color: var(--text-white); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-white);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
 
-    .app-screen { flex: 1; display: flex; flex-direction: column; padding: 14px; position: relative; overflow-y: auto; }
+    /* 하단 버튼 가림 방지를 위해 아래쪽 여백(safe area)을 넉넉히 준 메인 스크롤 뷰 */
+    .app-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 14px 14px 90px 14px;
+      position: relative;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
 
     .memo-toggle-btn {
       position: absolute; top: 14px; right: 14px;
@@ -71,21 +88,34 @@
     .chat-input-row { display: flex; gap: 6px; margin-top: 6px; }
     .chat-input-row input { flex: 1; background: #0a0c10; border: 1px solid #444; color: #fff; padding: 6px 8px; font-size: 12px; border-radius: 4px; }
 
-    .action-panel { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
-    .btn { width: 100%; padding: 12px; border-radius: 8px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    /* 화면 하단 고정 영역 터치 개선 (모바일 세로 모드 대응) */
+    .action-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(to top, rgba(10, 12, 16, 0.98) 80%, rgba(10, 12, 16, 0));
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)) 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 60;
+    }
+
+    .btn { width: 100%; padding: 13px; border-radius: 8px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
     .btn-blood { background: linear-gradient(135deg, #c0392b, #8e1c14); color: #fff; }
     .btn-green { background: linear-gradient(135deg, #27ae60, #1e8449); color: #fff; }
     .btn-dark { background: #222a38; color: #fff; border: 1px solid var(--border-color); }
     .btn-whisper { background: #24334a; color: #7cb5ec; border: 1px solid #3b5377; }
 
     .modal-overlay {
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
       display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; z-index: 100;
     }
 
     .memo-modal {
-      position: absolute; top: 50px; right: 14px; left: 14px; bottom: 80px;
+      position: fixed; top: 50px; right: 14px; left: 14px; bottom: 100px;
       background: #141822; border: 2px solid var(--border-color); border-radius: 12px;
       padding: 14px; display: flex; flex-direction: column; z-index: 100;
     }
@@ -103,6 +133,15 @@
       background: #0b111a; border: 1px solid #3b5377; color: #fff; padding: 8px; border-radius: 4px; font-size: 13px;
     }
 
+    .main-school-title {
+      font-size: 20px;
+      font-weight: 900;
+      color: var(--moon-gold);
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+      text-shadow: 0 0 10px rgba(243, 156, 18, 0.3);
+    }
+
     .hidden { display: none !important; }
   </style>
 </head>
@@ -111,7 +150,7 @@
   <div class="app-screen">
     <button class="memo-toggle-btn hidden" id="memoBtn" onclick="toggleMemo()">📝 비밀 수첩</button>
 
-    <!-- 상단 헤더 및 타이머 -->
+    <!-- 상단 헤더 -->
     <div class="status-panel">
       <div class="phase-badge" id="phaseTitle">대기실 (LOBBY)</div>
       <div class="timer-display" id="timerBox">--:--</div>
@@ -121,6 +160,9 @@
     <!-- 1. 입장/생성 화면 -->
     <div id="viewLobby">
       <div class="custom-box">
+        <!-- 메인 학교 타이틀 -->
+        <div class="main-school-title">🏫 의령여고 마피아의 밤</div>
+
         <div class="tab-group">
           <button class="tab-btn active" id="tabCreate" onclick="switchLobbyTab('create')">방 만들기 (방장)</button>
           <button class="tab-btn" id="tabJoin" onclick="switchLobbyTab('join')">방 참가하기 (학생)</button>
@@ -128,16 +170,17 @@
 
         <div style="text-align: left; margin-bottom: 12px;">
           <label style="font-size: 12px; color: var(--text-dim);">내 닉네임:</label>
-          <input type="text" id="nicknameInput" placeholder="이름 입력 (예: 철수)" style="width: 100%; padding: 8px; background: #0a0c10; border: 1px solid var(--border-color); color: #fff; border-radius: 6px; margin-top: 4px; font-size: 14px;">
+          <input type="text" id="nicknameInput" placeholder="이름 입력 (예: 김혁진)" style="width: 100%; padding: 8px; background: #0a0c10; border: 1px solid var(--border-color); color: #fff; border-radius: 6px; margin-top: 4px; font-size: 14px;">
         </div>
 
         <div id="createOptions">
           <div style="text-align: left; margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 4px;">
-              <span>참가 인원수:</span>
-              <b id="playerCountVal" style="color: var(--moon-gold);">6명</b>
+              <span>참가 인원수 (최대 15인):</span>
+              <b id="playerCountVal" style="color: var(--moon-gold);">8명</b>
             </div>
-            <input type="range" id="maxPlayerRange" min="3" max="10" value="6" style="width: 100%; accent-color: var(--blood-red);" oninput="document.getElementById('playerCountVal').textContent = this.value + '명'">
+            <!-- 최대 15인 확장 슬라이더 -->
+            <input type="range" id="maxPlayerRange" min="3" max="15" value="8" style="width: 100%; accent-color: var(--blood-red);" oninput="document.getElementById('playerCountVal').textContent = this.value + '명'">
           </div>
 
           <div style="text-align: left; margin-bottom: 16px;">
@@ -166,19 +209,19 @@
       <div class="custom-box">
         <div style="font-size: 13px; color: var(--text-dim);">방 코드</div>
         <div style="font-size: 32px; font-weight: 900; color: var(--blood-glow); letter-spacing: 3px;" id="dispRoomCode">----</div>
-        <p style="font-size: 11px; color: #aaa; margin: 6px 0 14px;">친구들에게 코드를 알려주세요.</p>
+        <p style="font-size: 11px; color: #aaa; margin: 6px 0 14px;">칠판에 코드를 적거나 공유하세요.</p>
         
         <div style="text-align: left; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">
-          접속 중인 참가자 (<span id="currentCount">1</span>/<span id="targetCount">6</span>)
+          접속 중인 참가자 (<span id="currentCount">1</span>/<span id="targetCount">8</span>)
         </div>
-        <div id="lobbyPlayerList" style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; margin-bottom: 16px;"></div>
+        <div id="lobbyPlayerList" style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; margin-bottom: 16px;"></div>
 
         <button class="btn btn-blood hidden" id="startGameBtn" onclick="requestStartGame()">🩸 게임 시작 (방장 전용)</button>
-        <div id="waitHostMsg" style="font-size: 12px; color: #888;">방장이 게임을 시작하기를 기다리고 있습니다...</div>
+        <div id="waitHostMsg" style="font-size: 12px; color: #888;">선생님이 게임을 시작하기를 기다리고 있습니다...</div>
       </div>
     </div>
 
-    <!-- 3. 메인 게임 화면 (카드 그리드) -->
+    <!-- 3. 메인 게임 화면 -->
     <div id="viewMainGame" class="hidden">
       <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 6px; display: flex; justify-content: space-between;">
         <span id="playerGridHeader">생존자 목록</span>
@@ -213,32 +256,29 @@
       </div>
     </div>
 
-    <!-- 5. 해명 타임 화면 -->
+    <!-- 5. 최후의 변론 (해명 타임) -->
     <div id="viewTrialDefense" class="hidden">
       <div class="custom-box box-trial">
         <div style="font-size: 40px;">⛓️</div>
         <div style="font-size: 20px; font-weight: 900; color: var(--blood-glow); margin: 6px 0;" id="suspectName">---</div>
-        <p style="font-size: 12px; color: #ccc;">용의자로 지목되었습니다.<br>마피아가 아님을 직접 해명하세요!</p>
+        <p style="font-size: 12px; color: #ccc;">용의자로 지목되었습니다.<br>자신이 마피아가 아님을 육성으로 해명하세요!</p>
       </div>
     </div>
 
-    <!-- 6. 최종 찬반 투표 화면 -->
+    <!-- 6. 최종 찬반 투표 -->
     <div id="viewTrialFinal" class="hidden">
       <div class="custom-box box-trial">
         <div style="font-size: 30px;">⚖️</div>
         <div style="font-size: 17px; font-weight: bold; margin: 6px 0;">최종 처형 찬반 투표</div>
         <p style="font-size: 12px; color: #aaa; margin-bottom: 14px;">해명을 믿으십니까? 처형 찬성 과반 시 탈락합니다.</p>
         <div style="display: flex; gap: 8px;">
-          <button class="btn btn-blood" onclick="submitFinalVote(true)">💀 처형</button>
+          <button class="btn btn-blood" onclick="submitFinalVote(true)">💀 처형 찬성</button>
           <button class="btn btn-green" onclick="submitFinalVote(false)">🕊️ 살리기</button>
         </div>
       </div>
     </div>
 
-    <!-- 하단 조작 액션 패널 -->
-    <div class="action-panel" id="actionPanel"></div>
-
-    <!-- 역할 확인 엿보기 모달 -->
+    <!-- 역할 확인 모달 -->
     <div class="modal-overlay hidden" id="roleModal">
       <div class="custom-box">
         <div style="font-size: 18px; font-weight: bold;">🔒 당신의 비밀 역할</div>
@@ -269,6 +309,9 @@
     </div>
   </div>
 
+  <!-- 하단 고정 액션 패널 (모바일 세로 모드 대응) -->
+  <div class="action-panel" id="actionPanel"></div>
+
   <script>
     const socket = io();
 
@@ -280,7 +323,6 @@
     let selectedTargetId = null;
     let currentPhase = 'LOBBY';
 
-    // 소켓 이벤트 리스너
     socket.on('room_created', ({ roomCode, maxPlayers }) => {
       myRoomCode = roomCode;
       isHost = true;
@@ -381,7 +423,6 @@
       logs.scrollTop = logs.scrollHeight;
     });
 
-    // 귓속말 수신 리스너
     socket.on('whisper_received', ({ senderName, message }) => {
       alert(`📩 [비밀 귓속말 도착]\n보낸 사람: ${senderName}\n내용: ${message}`);
       const memo = document.getElementById('memoContent');
@@ -415,7 +456,7 @@
     }
 
     function requestCreateRoom() {
-      myName = document.getElementById('nicknameInput').value.trim() || '방장';
+      myName = document.getElementById('nicknameInput').value.trim() || '선생님';
       const maxPlayers = parseInt(document.getElementById('maxPlayerRange').value);
       const talkTime = parseInt(document.getElementById('talkTimeRange').value) * 60;
       socket.emit('create_room', { hostName: myName, playerCount: maxPlayers, talkTime });
@@ -443,7 +484,6 @@
           selectedTargetId = p.id;
           renderGameGrid();
 
-          // 낮 자유 토론 시간일 때 상대방 카드를 누르면 귓속말 바 열기
           if (currentPhase === 'DAY_TALK' && p.id !== socket.id) {
             openWhisperBox(p.name);
           }
@@ -490,6 +530,12 @@
       } else if (role === 'doctor') {
         icon.textContent = "💉"; title.textContent = "의사"; title.style.color = "var(--toxic-green)";
         desc.textContent = "밤마다 1명을 마피아의 습격으로부터 치료하세요.";
+      } else if (role === 'soldier') {
+        icon.textContent = "🛡️"; title.textContent = "군인"; title.style.color = "#e67e22";
+        desc.textContent = "마피아의 첫 번째 암살 시도를 1회 방어할 수 있습니다.";
+      } else if (role === 'traitor') {
+        icon.textContent = "🎭"; title.textContent = "배신자"; title.style.color = "#9b59b6";
+        desc.textContent = "시민 팀이지만 마피아의 승리를 돕는 비밀 조력자입니다.";
       } else {
         icon.textContent = "👤"; title.textContent = "선량한 시민"; title.style.color = "#fff";
         desc.textContent = "낮의 토론과 알리바이를 분석해 마피아를 찾으세요.";
@@ -524,7 +570,7 @@
       if (phase === 'DAY_TALK') {
         title.textContent = "☀️ 낮: 자유 토론";
         title.style.color = "var(--moon-gold)";
-        sub.textContent = "대면 토론 시간입니다. (카드 터치 시 1:1 비밀 귓속말 가능)";
+        sub.textContent = "대면 토론 시간입니다. (카드 터치 시 1:1 비밀 귓속말)";
         actions.innerHTML = isHost ? `<button class="btn btn-blood" onclick="socket.emit('trigger_vote1', {roomCode: myRoomCode})">🗳️ 1차 지목 투표 시작 (방장 조기마감)</button>` : '';
       } else if (phase === 'DAY_VOTE1') {
         title.textContent = "🗳️ 1차 용의자 지목 투표";
@@ -536,7 +582,7 @@
         document.getElementById('viewTrialDefense').classList.remove('hidden');
         document.getElementById('suspectName').textContent = suspectName;
         title.textContent = "⚠️ 최후의 변론 (해명 타임)";
-        sub.textContent = "지목된 용의자의 육성 해명을 경청하세요.";
+        sub.textContent = "지목된 학생의 육성 해명을 경청하세요.";
         actions.innerHTML = isHost ? `<button class="btn btn-dark" onclick="socket.emit('trigger_final_vote', {roomCode: myRoomCode})">⚖️ 최종 찬반 투표 시작 (방장 조기마감)</button>` : '';
       } else if (phase === 'TRIAL_FINAL') {
         document.getElementById('viewTrialDefense').classList.add('hidden');
