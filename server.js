@@ -19,15 +19,22 @@ function generateRoomCode() {
   return res;
 }
 
+// 최대 15인까지 자동 확장된 역할 배정 함수
 function getBalancedRoles(count) {
   if (count <= 3) return ['mafia', 'police', 'doctor'];
   if (count <= 4) return ['mafia', 'police', 'doctor', 'citizen'];
   if (count <= 6) return ['mafia', 'mafia', 'police', 'doctor', 'citizen', 'citizen'];
   if (count <= 8) return ['mafia', 'mafia', 'police', 'doctor', 'soldier', 'citizen', 'citizen', 'citizen'];
-  return ['mafia', 'mafia', 'traitor', 'police', 'doctor', 'soldier', 'citizen', 'citizen', 'citizen', 'citizen'];
+  if (count <= 10) return ['mafia', 'mafia', 'traitor', 'police', 'doctor', 'soldier', 'citizen', 'citizen', 'citizen', 'citizen'];
+  if (count <= 12) return ['mafia', 'mafia', 'mafia', 'police', 'doctor', 'soldier', 'citizen', 'citizen', 'citizen', 'citizen', 'citizen', 'citizen'];
+  // 13~15인 (마피아 3, 배신자 1, 경찰 1, 의사 1, 군인 1 + 시민)
+  const base = ['mafia', 'mafia', 'mafia', 'traitor', 'police', 'doctor', 'soldier'];
+  while (base.length < count) {
+    base.push('citizen');
+  }
+  return base;
 }
 
-// 타이머 인터벌 관리 함수
 function clearRoomTimer(room) {
   if (room.timerInterval) {
     clearInterval(room.timerInterval);
@@ -51,12 +58,10 @@ function startPhaseTimer(room, durationSec, onEndCallback) {
   }, 1000);
 }
 
-// 밤 페이즈 정산 및 아침 전환
 function resolveNight(room) {
   clearRoomTimer(room);
   let killedPlayer = null;
 
-  // 마피아 타깃이 있고 의사가 치료하지 못한 경우
   if (room.nightActions.mafiaTarget) {
     if (room.nightActions.mafiaTarget !== room.nightActions.doctorTarget) {
       killedPlayer = room.players.find(p => p.id === room.nightActions.mafiaTarget);
@@ -66,7 +71,6 @@ function resolveNight(room) {
     }
   }
 
-  // 승리 조건 체크
   const aliveMafia = room.players.filter(p => !p.isDead && p.role === 'mafia').length;
   const aliveCitizens = room.players.filter(p => !p.isDead && p.role !== 'mafia').length;
 
@@ -74,10 +78,8 @@ function resolveNight(room) {
   if (aliveMafia === 0) winner = '시민 팀';
   else if (aliveMafia >= aliveCitizens) winner = '마피아 팀';
 
-  // 아침 발표
   room.phase = 'DAY_TALK';
   room.dayCount++;
-  // 귓속말 대상 초기화 (새로운 날)
   room.players.forEach(p => p.whisperedToday = []);
 
   io.to(room.code).emit('player_list_updated', room.players);
@@ -89,7 +91,6 @@ function resolveNight(room) {
 
   if (winner) return;
 
-  // 다음 날 낮 자유 토론 시작
   startPhaseTimer(room, room.talkTime, () => {
     startVote1(room);
   });
@@ -127,7 +128,6 @@ function tallyVote1(room) {
   }
 
   if (!topTarget || isTie || maxVote === 0) {
-    // 동표 또는 무투표 시 처형 없이 바로 밤으로 전환
     io.to(room.code).emit('announcement', '투표 결과: 동표 또는 무투표로 아무도 지목되지 않았습니다. 밤으로 넘어갑니다.');
     enterNightPhase(room);
     return;
@@ -142,7 +142,6 @@ function tallyVote1(room) {
     suspectName: suspect ? suspect.name : '알 수 없음'
   });
 
-  // 해명 시간 (60초)
   startPhaseTimer(room, 60, () => {
     startFinalVote(room);
   });
@@ -177,14 +176,12 @@ function enterNightPhase(room) {
   room.nightActions = { mafiaTarget: null, doctorTarget: null, policeTarget: null };
   io.to(room.code).emit('phase_changed', { phase: 'NIGHT' });
 
-  // 밤 제한 시간 (30초)
   startPhaseTimer(room, 30, () => {
     resolveNight(room);
   });
 }
 
 io.on('connection', (socket) => {
-  // 방 만들기
   socket.on('create_room', ({ hostName, playerCount, talkTime }) => {
     let roomCode = generateRoomCode();
     while (rooms[roomCode]) roomCode = generateRoomCode();
@@ -192,7 +189,7 @@ io.on('connection', (socket) => {
     rooms[roomCode] = {
       code: roomCode,
       hostId: socket.id,
-      maxPlayers: playerCount || 6,
+      maxPlayers: playerCount || 8,
       talkTime: talkTime || 180,
       phase: 'LOBBY',
       dayCount: 1,
@@ -216,11 +213,10 @@ io.on('connection', (socket) => {
       whisperedToday: []
     });
 
-    socket.emit('room_created', { roomCode, maxPlayers: playerCount || 6 });
+    socket.emit('room_created', { roomCode, maxPlayers: playerCount || 8 });
     io.to(roomCode).emit('player_list_updated', rooms[roomCode].players);
   });
 
-  // 방 참가하기
   socket.on('join_room', ({ roomCode, playerName }) => {
     const room = rooms[roomCode];
     if (!room) return socket.emit('error_msg', '존재하지 않는 방 코드입니다.');
@@ -242,7 +238,6 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('player_list_updated', room.players);
   });
 
-  // 게임 시작
   socket.on('start_game', ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room || socket.id !== room.hostId) return;
@@ -270,7 +265,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 1차 투표 시작 트리거 (방장 조기 종료)
   socket.on('trigger_vote1', ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room || socket.id !== room.hostId) return;
@@ -278,7 +272,6 @@ io.on('connection', (socket) => {
     startVote1(room);
   });
 
-  // 1차 투표 행사
   socket.on('cast_vote1', ({ roomCode, targetId }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'DAY_VOTE1') return;
@@ -296,7 +289,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 최종 찬반 투표 시작 (방장 조기 종료)
   socket.on('trigger_final_vote', ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room || socket.id !== room.hostId) return;
@@ -304,7 +296,6 @@ io.on('connection', (socket) => {
     startFinalVote(room);
   });
 
-  // 최종 찬반 투표 행사
   socket.on('cast_vote_final', ({ roomCode, isExecute }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'TRIAL_FINAL') return;
@@ -320,7 +311,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 밤 행동 제출 (마피아/의사/경찰)
   socket.on('night_action', ({ roomCode, targetId }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'NIGHT') return;
@@ -330,7 +320,6 @@ io.on('connection', (socket) => {
 
     if (sender.role === 'mafia') {
       room.nightActions.mafiaTarget = targetId;
-      // 마피아 룸에 선택 알림
       const target = room.players.find(p => p.id === targetId);
       io.to(roomCode + '_mafia').emit('mafia_target_updated', {
         targetName: target ? target.name : ''
@@ -347,7 +336,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 비밀 귓속말 (하루 최대 2명 제한)
   socket.on('send_whisper', ({ roomCode, targetId, message }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'DAY_TALK') {
@@ -358,26 +346,23 @@ io.on('connection', (socket) => {
     const target = room.players.find(p => p.id === targetId);
 
     if (!sender || sender.isDead) return;
-    if (!target || target.isDead) return socket.emit('error_msg', '대상이 사망했거나 올바르지 않습니다.');
-    if (sender.id === target.id) return socket.emit('error_msg', '자신에게는 귓속말을 보낼 수 없습니다.');
+    if (!target || target.isDead) return socket.emit('error_msg', '대상이 올바르지 않습니다.');
+    if (sender.id === target.id) return socket.emit('error_msg', '자신에게는 보낼 수 없습니다.');
 
     sender.whisperedToday = sender.whisperedToday || [];
 
-    // 이미 오늘 귓속말을 보낸 대상이 아니고, 서로 다른 대상을 2명 초과했을 때 차단
     if (!sender.whisperedToday.includes(targetId)) {
       if (sender.whisperedToday.length >= 2) {
-        return socket.emit('error_msg', '귓속말은 하루에 최대 2명에게만 보낼 수 있습니다.');
+        return socket.emit('error_msg', '귓속말은 하루 최대 2명에게만 보낼 수 있습니다.');
       }
       sender.whisperedToday.push(targetId);
     }
 
-    // 대상자에게 비밀 전송
     io.to(target.id).emit('whisper_received', {
       senderName: sender.name,
       message: message
     });
 
-    // 보낸 사람 본인에게 확인 전송
     socket.emit('whisper_sent_success', {
       targetName: target.name,
       message: message,
@@ -385,12 +370,10 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 마피아 단톡방 채팅
   socket.on('mafia_chat', ({ roomCode, msg, senderName }) => {
     io.to(roomCode + '_mafia').emit('mafia_chat_received', { sender: senderName, text: msg });
   });
 
-  // 퇴장 처리
   socket.on('disconnect', () => {
     for (const [code, room] of Object.entries(rooms)) {
       const idx = room.players.findIndex(p => p.id === socket.id);
@@ -407,7 +390,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log('마피아 실시간 서버 가동 완료: http://localhost:' + PORT);
+  console.log('마피아 실시간 서버 가동 완료: 포트 ' + PORT);
 });
