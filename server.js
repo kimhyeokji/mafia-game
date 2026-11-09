@@ -145,11 +145,11 @@ function resolveNight(room) {
 
   room.goldenBellActive = false;
   room.goldenBellTimeout = setTimeout(() => {
-    let dots = Math.floor(Math.random() * 5) + 4;
+    let dots = Math.floor(Math.random() * 5) + 4; // 4~8개 파란점
     room.goldenBellActive = true;
     room.goldenBellAnswer = dots;
     io.to(room.code).emit('golden_bell_start', { dots });
-  }, 30000);
+  }, 30000); // 낮 시작 30초 후 발동
 
   startPhaseTimer(room, room.talkTime, () => startVote1(room));
 }
