@@ -83,8 +83,9 @@
 </head>
 <body>
   
+  <!-- BGM 세팅: 낮, 으스스하지만 고요한 밤(서스펜스), 투표 -->
   <audio id="bgmDay" loop src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"></audio>
-  <audio id="bgmNight" loop src="https://cdn.pixabay.com/download/audio/2022/10/25/audio_2fd1c39050.mp3"></audio>
+  <audio id="bgmNight" loop src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3"></audio> 
   <audio id="bgmTrial" loop src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3"></audio>
 
   <div class="marquee-container hidden" id="marqueeBox">
@@ -93,7 +94,7 @@
 
   <div class="app-screen">
     <div style="position: absolute; top: 14px; right: 14px; z-index: 50; display: flex; gap: 8px;">
-      <!-- [복구] 수첩(메모) 버튼 재배치 -->
+      <!-- 수첩 버튼 (메모 및 자동 로그) -->
       <button class="glass-panel hidden" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="toggleMemo()" id="memoBtn">📝 수첩</button>
       <button class="glass-panel" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="toggleBGM()" id="bgmBtn">🔊 BGM 켜짐</button>
       <button class="glass-panel" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="document.getElementById('guideModal').classList.remove('hidden')">📖 도감</button>
@@ -149,6 +150,7 @@
     <div id="viewMainGame" class="hidden">
       <div class="player-grid" id="playerGrid"></div>
       
+      <!-- 귓속말 전용 UI 박스 -->
       <div id="whisperSection" class="custom-box glass-panel hidden" style="margin-bottom:16px; padding:12px; max-width:100%;">
         <div style="font-size: 13px; color: #7cb5ec; display: flex; justify-content: space-between; margin-bottom:10px;">
           <span>💬 [<b id="whisperTargetName" style="color:var(--moon-gold)">상대방</b>]에게 은밀히 쪽지 보내기</span>
@@ -177,6 +179,7 @@
 
   <div class="action-panel" id="actionPanel"></div>
 
+  <!-- 역할 엿보기 꾹 누르기 모달 -->
   <div class="modal-overlay hidden" id="roleModal">
     <div class="custom-box glass-panel">
       <div style="font-size: 18px; font-weight: bold; color:var(--moon-gold);">🔒 당신의 비밀 역할</div>
@@ -198,18 +201,19 @@
     </div>
   </div>
 
-  <!-- [복구] 개인 메모장 및 로그 기록용 모달 -->
+  <!-- 나만의 비밀 수첩 (로그 저장소) -->
   <div class="modal-overlay hidden" id="memoModal">
     <div class="custom-box glass-panel" style="width:90%; height:70%; display:flex; flex-direction:column; padding:16px; margin:auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <span style="font-weight: bold; font-size: 16px; color:var(--moon-gold);">📝 나만의 비밀 수첩</span>
         <button onclick="toggleMemo()" style="background: none; border: none; color: #aaa; font-size: 20px; cursor: pointer;">✕</button>
       </div>
-      <textarea id="memoContent" placeholder="추리 내용, 단서, 주고받은 귓속말 기록이 이곳에 저장됩니다..." style="flex:1; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:8px; color:#fff; padding:12px; font-size:13px; resize:none; outline:none; line-height:1.6;"></textarea>
+      <textarea id="memoContent" placeholder="자유로운 추리 내용, 단서, 주고받은 귓속말 기록이 이곳에 저장됩니다..." style="flex:1; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:8px; color:#fff; padding:12px; font-size:13px; resize:none; outline:none; line-height:1.6;"></textarea>
       <button class="btn btn-dark" style="margin-top: 12px;" onclick="toggleMemo()">닫기</button>
     </div>
   </div>
 
+  <!-- 투표 결과 모달 (방장이 닫아야 넘어감) -->
   <div class="modal-overlay hidden" id="voteSummaryModal">
     <div class="custom-box glass-panel" style="max-height:80vh; overflow-y:auto;">
       <h3 style="color:var(--blood-glow); margin-bottom:14px; font-size:18px;">🗳️ 투표 결과 보고서</h3>
@@ -265,7 +269,7 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_v4';
+    const TOKEN_KEY = 'mafia_token_v4_final';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
@@ -275,9 +279,11 @@
 
     let isBgmEnabled = true;
     function unlockAudio() {
-      ['bgmDay', 'bgmNight', 'bgmTrial'].forEach(id => {
-        let el = document.getElementById(id);
-        el.volume = 0.3; 
+      let day = document.getElementById('bgmDay'); day.volume = 0.25;
+      let night = document.getElementById('bgmNight'); night.volume = 0.15; // 밤은 아주 잔잔하게
+      let trial = document.getElementById('bgmTrial'); trial.volume = 0.25;
+      
+      [day, night, trial].forEach(el => {
         el.play().then(() => el.pause()).catch(e => console.log(e));
       });
     }
@@ -307,7 +313,6 @@
       }
     }
 
-    // [복구] 수첩 토글 함수
     function toggleMemo() {
       document.getElementById('memoModal').classList.toggle('hidden');
     }
@@ -342,7 +347,7 @@
       localStorage.setItem(TOKEN_KEY, myToken);
       document.getElementById('viewLobby').classList.add('hidden');
       setupRoleTabs();
-      document.getElementById('memoBtn').classList.remove('hidden'); // 수첩 버튼 살리기
+      document.getElementById('memoBtn').classList.remove('hidden');
       handlePhaseChange(data.phase, null, null);
     });
 
@@ -377,7 +382,7 @@
       document.getElementById('viewWaitingRoom').classList.add('hidden');
       document.getElementById('viewMainGame').classList.remove('hidden');
       document.getElementById('marqueeBox').classList.remove('hidden');
-      document.getElementById('memoBtn').classList.remove('hidden'); // 수첩 버튼 등장
+      document.getElementById('memoBtn').classList.remove('hidden');
       setupRoleTabs();
       
       let title="시민", icon="👤", desc="낮 토론으로 마피아를 색출하세요.";
@@ -576,7 +581,6 @@
       alert(txt);
     });
     
-    // [복구/추가] 비밀 물증, 귓속말, 힌트 수신 시 개인 메모장에 자동 기록
     socket.on('evidence_received', (txt) => { 
       alert("📜 [비밀 물증 획득]\n" + txt); 
       let time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
