@@ -7,634 +7,463 @@
   <script src="/socket.io/socket.io.js"></script>
   <style>
     :root {
-      --bg-dark: #0a0c10;
-      --card-bg: #141822;
-      --border-color: #262c3a;
-      --blood-red: #c0392b;
-      --blood-glow: #e74c3c;
-      --moon-gold: #f39c12;
-      --cold-blue: #2980b9;
-      --toxic-green: #27ae60;
-      --text-white: #f5f6fa;
-      --text-dim: #7f8c8d;
+      --bg-dark: #0a0c10; --card-bg: #141822; --border-color: #262c3a;
+      --blood-red: #c0392b; --blood-glow: #e74c3c; --moon-gold: #f39c12;
+      --cold-blue: #2980b9; --toxic-green: #27ae60; --text-white: #f5f6fa; --text-dim: #7f8c8d;
     }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { background-color: var(--bg-dark); color: var(--text-white); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", sans-serif; }
-    
-    body {
-      background-color: var(--bg-dark);
-      color: var(--text-white);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
+    /* 전광판 (익명 제보) */
+    .marquee-container { background: #000; color: var(--moon-gold); font-size: 13px; font-weight: bold; overflow: hidden; padding: 4px; border-bottom: 1px solid var(--moon-gold); }
+    .marquee-content { white-space: nowrap; animation: marquee 15s linear infinite; }
+    @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
-    /* 하단 버튼 가림 방지를 위해 아래쪽 여백(safe area)을 넉넉히 준 메인 스크롤 뷰 */
-    .app-screen {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      padding: 14px 14px 90px 14px;
-      position: relative;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .memo-toggle-btn {
-      position: absolute; top: 14px; right: 14px;
-      background: #252d3d; border: 1px solid var(--border-color); color: #fff;
-      padding: 6px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; cursor: pointer; z-index: 50;
-    }
-
-    .status-panel {
-      background: rgba(20, 24, 34, 0.95); border: 1px solid var(--border-color);
-      border-radius: 12px; padding: 12px; text-align: center; margin-bottom: 12px;
-    }
-    .phase-badge { font-size: 13px; font-weight: 800; letter-spacing: 1.5px; color: var(--blood-glow); }
+    .app-screen { flex: 1; display: flex; flex-direction: column; padding: 14px 14px 90px 14px; position: relative; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .status-panel { background: rgba(20,24,34,0.95); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px; text-align: center; margin-bottom: 12px; }
+    .phase-badge { font-size: 13px; font-weight: 800; color: var(--blood-glow); }
     .timer-display { font-size: 38px; font-weight: 900; color: var(--text-white); font-variant-numeric: tabular-nums; }
-    .timer-warning { color: var(--blood-glow) !important; animation: heartbeat 1s infinite alternate; }
-    @keyframes heartbeat { from { transform: scale(1); } to { transform: scale(1.05); } }
-
+    
     .player-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
-    .player-card {
-      background: var(--card-bg); border: 1.5px solid var(--border-color);
-      border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;
-    }
+    .player-card { background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; cursor: pointer; position: relative; }
     .player-card.selected { border-color: var(--blood-glow); background: #291215; }
-    .player-card.dead { opacity: 0.35; filter: grayscale(100%); pointer-events: none; }
-    .card-name { font-size: 13px; font-weight: bold; }
-    .vote-count-pill { margin-left: auto; background: var(--blood-red); color: #fff; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 10px; }
+    .player-card.dead { opacity: 0.4; filter: grayscale(80%); }
+    .voter-badges { font-size: 9px; color: #aaa; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 2px; }
+    .badge { background: #333; padding: 2px 4px; border-radius: 4px; }
 
-    .custom-box {
-      background: radial-gradient(circle, #1a1e28 0%, #0d0f14 100%);
-      border: 1.5px solid var(--border-color); border-radius: 14px;
-      padding: 20px; width: 100%; max-width: 340px; text-align: center; margin: 0 auto;
-    }
-    .box-trial { border-color: var(--blood-red); box-shadow: 0 0 30px rgba(192, 57, 43, 0.4); }
+    .custom-box { background: radial-gradient(circle, #1a1e28 0%, #0d0f14 100%); border: 1.5px solid var(--border-color); border-radius: 14px; padding: 20px; width: 100%; max-width: 340px; margin: 0 auto; text-align: center; }
+    
+    .chat-container { background: #11151f; border: 1px solid var(--border-color); border-radius: 8px; flex: 1; display: flex; flex-direction: column; margin-top: 8px; max-height: 200px; }
+    .chat-tabs { display: flex; border-bottom: 1px solid #333; }
+    .chat-tab { flex: 1; padding: 6px; font-size: 12px; text-align: center; cursor: pointer; background: #0a0c10; color: #888; }
+    .chat-tab.active { background: #11151f; color: var(--text-white); font-weight: bold; border-top: 2px solid var(--blood-red); }
+    .chat-logs { flex: 1; overflow-y: auto; padding: 8px; font-size: 12px; display: flex; flex-direction: column; gap: 4px; text-align: left; }
+    .chat-input-row { display: flex; padding: 4px; gap: 4px; background: #0a0c10; border-top: 1px solid #333; }
+    .chat-input-row input { flex: 1; background: transparent; border: none; color: #fff; padding: 6px; font-size: 12px; outline: none; }
 
-    .peek-card {
-      background: #0f1218; border: 2px dashed var(--moon-gold); border-radius: 12px;
-      padding: 30px 20px; margin: 16px 0; cursor: pointer; touch-action: none;
-    }
-    .peek-card:active { border-style: solid; background: #1e1912; }
+    .action-panel { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(10,12,16,0.95); padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; z-index: 60; border-top: 1px solid var(--border-color); }
+    .btn { width: 100%; padding: 13px; border-radius: 8px; border: none; font-size: 14px; font-weight: bold; color: #fff; cursor: pointer; }
+    .btn-blood { background: linear-gradient(135deg, #c0392b, #8e1c14); }
+    .btn-dark { background: #222a38; border: 1px solid var(--border-color); }
+    .btn-green { background: linear-gradient(135deg, #27ae60, #1e8449); }
 
-    .mafia-chat-box {
-      background: #1b1214; border: 1px solid var(--blood-red); border-radius: 8px;
-      padding: 10px; margin-top: 10px; display: flex; flex-direction: column; height: 130px;
-    }
-    .mafia-chat-logs { flex: 1; overflow-y: auto; font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
-    .chat-msg { background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 4px; }
-    .chat-input-row { display: flex; gap: 6px; margin-top: 6px; }
-    .chat-input-row input { flex: 1; background: #0a0c10; border: 1px solid #444; color: #fff; padding: 6px 8px; font-size: 12px; border-radius: 4px; }
-
-    /* 화면 하단 고정 영역 터치 개선 (모바일 세로 모드 대응) */
-    .action-panel {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: linear-gradient(to top, rgba(10, 12, 16, 0.98) 80%, rgba(10, 12, 16, 0));
-      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)) 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      z-index: 60;
-    }
-
-    .btn { width: 100%; padding: 13px; border-radius: 8px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
-    .btn-blood { background: linear-gradient(135deg, #c0392b, #8e1c14); color: #fff; }
-    .btn-green { background: linear-gradient(135deg, #27ae60, #1e8449); color: #fff; }
-    .btn-dark { background: #222a38; color: #fff; border: 1px solid var(--border-color); }
-    .btn-whisper { background: #24334a; color: #7cb5ec; border: 1px solid #3b5377; }
-
-    .modal-overlay {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
-      display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; z-index: 100;
-    }
-
-    .memo-modal {
-      position: fixed; top: 50px; right: 14px; left: 14px; bottom: 100px;
-      background: #141822; border: 2px solid var(--border-color); border-radius: 12px;
-      padding: 14px; display: flex; flex-direction: column; z-index: 100;
-    }
-    .memo-modal textarea { flex: 1; background: #0a0c10; border: 1px solid #333; border-radius: 6px; color: #fff; padding: 10px; font-size: 13px; resize: none; outline: none; }
-
-    .tab-group { display: flex; gap: 6px; margin-bottom: 14px; }
-    .tab-btn { flex: 1; padding: 8px; background: #1c2230; color: #aaa; border: 1px solid #333; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
-    .tab-btn.active { background: var(--blood-red); color: #fff; border-color: var(--blood-glow); }
-
-    .whisper-box {
-      background: #16202e; border: 1px solid #2d4260; border-radius: 8px;
-      padding: 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px;
-    }
-    .whisper-box input {
-      background: #0b111a; border: 1px solid #3b5377; color: #fff; padding: 8px; border-radius: 4px; font-size: 13px;
-    }
-
-    .main-school-title {
-      font-size: 20px;
-      font-weight: 900;
-      color: var(--moon-gold);
-      letter-spacing: 1px;
-      margin-bottom: 14px;
-      text-shadow: 0 0 10px rgba(243, 156, 18, 0.3);
-    }
-
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; z-index: 100; }
+    
+    #goldenBellCanvas { background: #000; border: 2px solid var(--moon-gold); border-radius: 8px; width: 300px; height: 200px; }
+    
     .hidden { display: none !important; }
   </style>
 </head>
-<body id="rootBody">
+<body>
+  
+  <div class="marquee-container hidden" id="marqueeBox">
+    <div class="marquee-content" id="marqueeText">대기실입니다. 게임을 시작해주세요.</div>
+  </div>
 
   <div class="app-screen">
-    <button class="memo-toggle-btn hidden" id="memoBtn" onclick="toggleMemo()">📝 비밀 수첩</button>
+    <!-- 헤더 우측 도감 버튼 -->
+    <div style="position: absolute; top: 14px; right: 14px; z-index: 50; display: flex; gap: 6px;">
+      <button class="btn-dark" style="padding:6px; font-size:11px; border-radius:6px;" onclick="document.getElementById('guideModal').classList.remove('hidden')">📖 도감</button>
+    </div>
 
-    <!-- 상단 헤더 -->
     <div class="status-panel">
       <div class="phase-badge" id="phaseTitle">대기실 (LOBBY)</div>
       <div class="timer-display" id="timerBox">--:--</div>
-      <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;" id="phaseSubtitle">방을 만들거나 방 코드로 입장하세요.</div>
+      <div style="font-size: 11px; color: var(--text-dim);" id="phaseSubtitle">방을 만들거나 참가하세요.</div>
     </div>
 
-    <!-- 1. 입장/생성 화면 -->
+    <!-- 1. 로비 화면 -->
     <div id="viewLobby">
       <div class="custom-box">
-        <!-- 메인 학교 타이틀 -->
-        <div class="main-school-title">🏫 의령여고 마피아의 밤</div>
-
-        <div class="tab-group">
-          <button class="tab-btn active" id="tabCreate" onclick="switchLobbyTab('create')">방 만들기 (방장)</button>
-          <button class="tab-btn" id="tabJoin" onclick="switchLobbyTab('join')">방 참가하기 (학생)</button>
+        <h2 style="color:var(--moon-gold); margin-bottom: 14px;">🏫 의령여고 마피아의 밤</h2>
+        <input type="text" id="nickInput" placeholder="내 이름 입력" style="width:100%; padding:8px; margin-bottom:12px; background:#000; color:#fff; border:1px solid #333; border-radius:6px;">
+        
+        <div style="display:flex; gap:8px; margin-bottom:12px;">
+          <button class="btn btn-blood" onclick="createRoom()">방 만들기</button>
+          <button class="btn btn-dark" onclick="joinRoom()">방 참가</button>
         </div>
-
-        <div style="text-align: left; margin-bottom: 12px;">
-          <label style="font-size: 12px; color: var(--text-dim);">내 닉네임:</label>
-          <input type="text" id="nicknameInput" placeholder="이름 입력 (예: 김혁진)" style="width: 100%; padding: 8px; background: #0a0c10; border: 1px solid var(--border-color); color: #fff; border-radius: 6px; margin-top: 4px; font-size: 14px;">
-        </div>
-
-        <div id="createOptions">
-          <div style="text-align: left; margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 4px;">
-              <span>참가 인원수 (최대 15인):</span>
-              <b id="playerCountVal" style="color: var(--moon-gold);">8명</b>
-            </div>
-            <!-- 최대 15인 확장 슬라이더 -->
-            <input type="range" id="maxPlayerRange" min="3" max="15" value="8" style="width: 100%; accent-color: var(--blood-red);" oninput="document.getElementById('playerCountVal').textContent = this.value + '명'">
-          </div>
-
-          <div style="text-align: left; margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 4px;">
-              <span>자유 토론 시간:</span>
-              <b id="talkTimeVal" style="color: var(--moon-gold);">3분</b>
-            </div>
-            <input type="range" id="talkTimeRange" min="1" max="10" value="3" style="width: 100%; accent-color: var(--moon-gold);" oninput="document.getElementById('talkTimeVal').textContent = this.value + '분'">
-          </div>
-
-          <button class="btn btn-blood" onclick="requestCreateRoom()">🩸 방 생성하기</button>
-        </div>
-
-        <div id="joinOptions" class="hidden">
-          <div style="text-align: left; margin-bottom: 16px;">
-            <label style="font-size: 12px; color: var(--text-dim);">4자리 방 코드:</label>
-            <input type="text" id="roomCodeInput" maxlength="4" placeholder="예: A8F2" style="width: 100%; padding: 8px; background: #0a0c10; border: 1px solid var(--border-color); color: #fff; border-radius: 6px; margin-top: 4px; font-size: 16px; text-transform: uppercase; text-align: center; letter-spacing: 2px;">
-          </div>
-          <button class="btn btn-blood" onclick="requestJoinRoom()">🚪 입장하기</button>
-        </div>
+        <input type="text" id="codeInput" placeholder="방 코드 (참가 시)" style="width:100%; padding:8px; background:#000; color:#fff; border:1px solid #333; border-radius:6px; text-transform:uppercase;">
       </div>
     </div>
 
-    <!-- 2. 대기 방 화면 -->
+    <!-- 2. 대기방 & 직업 설정 -->
     <div id="viewWaitingRoom" class="hidden">
       <div class="custom-box">
-        <div style="font-size: 13px; color: var(--text-dim);">방 코드</div>
-        <div style="font-size: 32px; font-weight: 900; color: var(--blood-glow); letter-spacing: 3px;" id="dispRoomCode">----</div>
-        <p style="font-size: 11px; color: #aaa; margin: 6px 0 14px;">칠판에 코드를 적거나 공유하세요.</p>
+        <div style="font-size:32px; font-weight:900; color:var(--blood-glow);" id="dispRoomCode">----</div>
+        <div style="font-size:12px; margin: 10px 0;">참가자: <span id="currentCount">0</span>명</div>
         
-        <div style="text-align: left; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">
-          접속 중인 참가자 (<span id="currentCount">1</span>/<span id="targetCount">8</span>)
+        <div id="hostOptions" class="hidden" style="text-align:left; font-size:12px; margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+          <div style="color:var(--moon-gold); margin-bottom:6px; font-weight:bold;">특수 직업 추가 (체크)</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+            <label><input type="checkbox" class="role-cb" value="police" checked disabled> 🔍 경찰(기본)</label>
+            <label><input type="checkbox" class="role-cb" value="doctor" checked disabled> 💉 의사(기본)</label>
+            <label><input type="checkbox" class="role-cb" value="spy"> 🎭 스파이(마)</label>
+            <label><input type="checkbox" class="role-cb" value="madam"> 💋 마담(마)</label>
+            <label><input type="checkbox" class="role-cb" value="reporter"> 📰 기자(시)</label>
+            <label><input type="checkbox" class="role-cb" value="politician"> 🏛 정치인(시)</label>
+            <label><input type="checkbox" class="role-cb" value="hunter"> 🏹 사냥꾼(시)</label>
+            <label><input type="checkbox" class="role-cb" value="medium"> 🔮 영매(시)</label>
+            <label><input type="checkbox" class="role-cb" value="lover"> 💕 연인1(시)</label>
+            <label><input type="checkbox" class="role-cb" value="lover"> 💕 연인2(시)</label>
+          </div>
+          <button class="btn btn-blood" style="margin-top:12px;" onclick="startGame()">게임 시작</button>
         </div>
-        <div id="lobbyPlayerList" style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; margin-bottom: 16px;"></div>
-
-        <button class="btn btn-blood hidden" id="startGameBtn" onclick="requestStartGame()">🩸 게임 시작 (방장 전용)</button>
-        <div id="waitHostMsg" style="font-size: 12px; color: #888;">선생님이 게임을 시작하기를 기다리고 있습니다...</div>
       </div>
     </div>
 
-    <!-- 3. 메인 게임 화면 -->
+    <!-- 3. 메인 게임 -->
     <div id="viewMainGame" class="hidden">
-      <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 6px; display: flex; justify-content: space-between;">
-        <span id="playerGridHeader">생존자 목록</span>
-        <span style="color: var(--moon-gold);">터치하여 선택</span>
-      </div>
       <div class="player-grid" id="playerGrid"></div>
-
-      <!-- 낮 귓속말 입력 UI -->
-      <div id="whisperSection" class="whisper-box hidden">
-        <div style="font-size: 12px; color: #7cb5ec; display: flex; justify-content: space-between;">
-          <span>💬 [<b id="whisperTargetName">상대방</b>]에게 비밀 귓속말</span>
-          <button onclick="closeWhisperBox()" style="background:none; border:none; color:#888; cursor:pointer;">✕</button>
+      
+      <!-- 통합 채팅창 -->
+      <div class="chat-container">
+        <div class="chat-tabs">
+          <div class="chat-tab active" id="tabPub" onclick="switchChat('public')">전체 채팅</div>
+          <div class="chat-tab hidden" id="tabMaf" onclick="switchChat('mafia')">🔪 마피아</div>
+          <div class="chat-tab hidden" id="tabLov" onclick="switchChat('lover')">💕 연인</div>
         </div>
-        <div style="display: flex; gap: 6px;">
-          <input type="text" id="whisperInput" placeholder="비밀 쪽지 내용 입력..." onkeydown="if(event.key==='Enter') sendWhisperMessage()">
-          <button class="btn btn-whisper" style="width: 60px; padding: 6px;" onclick="sendWhisperMessage()">전송</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 4. 마피아 밤 단톡방 -->
-    <div id="mafiaNightSection" class="hidden">
-      <div style="font-size: 12px; color: var(--blood-glow); font-weight: bold; margin-bottom: 4px;">
-        🔪 마피아 비밀 핫라인
-      </div>
-      <div class="mafia-chat-box">
-        <div class="mafia-chat-logs" id="mafiaLogs"></div>
+        <div class="chat-logs" id="chatLogs"></div>
         <div class="chat-input-row">
-          <input type="text" id="mafiaInput" placeholder="비밀 작전..." onkeydown="if(event.key==='Enter') sendMafiaChat()">
-          <button class="btn btn-blood" style="width: 50px; padding: 6px;" onclick="sendMafiaChat()">전송</button>
+          <input type="text" id="chatInput" placeholder="메시지 입력..." onkeydown="if(event.key==='Enter') sendChat()">
+          <button class="btn btn-dark" style="width:50px; padding:6px;" onclick="sendChat()">전송</button>
         </div>
       </div>
     </div>
 
-    <!-- 5. 최후의 변론 (해명 타임) -->
-    <div id="viewTrialDefense" class="hidden">
-      <div class="custom-box box-trial">
-        <div style="font-size: 40px;">⛓️</div>
-        <div style="font-size: 20px; font-weight: 900; color: var(--blood-glow); margin: 6px 0;" id="suspectName">---</div>
-        <p style="font-size: 12px; color: #ccc;">용의자로 지목되었습니다.<br>자신이 마피아가 아님을 육성으로 해명하세요!</p>
-      </div>
-    </div>
+  </div>
 
-    <!-- 6. 최종 찬반 투표 -->
-    <div id="viewTrialFinal" class="hidden">
-      <div class="custom-box box-trial">
-        <div style="font-size: 30px;">⚖️</div>
-        <div style="font-size: 17px; font-weight: bold; margin: 6px 0;">최종 처형 찬반 투표</div>
-        <p style="font-size: 12px; color: #aaa; margin-bottom: 14px;">해명을 믿으십니까? 처형 찬성 과반 시 탈락합니다.</p>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-blood" onclick="submitFinalVote(true)">💀 처형 찬성</button>
-          <button class="btn btn-green" onclick="submitFinalVote(false)">🕊️ 살리기</button>
-        </div>
-      </div>
-    </div>
+  <div class="action-panel" id="actionPanel"></div>
 
-    <!-- 역할 확인 모달 -->
-    <div class="modal-overlay hidden" id="roleModal">
-      <div class="custom-box">
-        <div style="font-size: 18px; font-weight: bold;">🔒 당신의 비밀 역할</div>
-        <p style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">화면을 가리고 확인하세요.</p>
-        <div class="peek-card" onmousedown="showSecretRole()" onmouseup="hideSecretRole()" ontouchstart="showSecretRole()" ontouchend="hideSecretRole()">
-          <div id="peekPlaceholder">
-            <div style="font-size: 32px;">👆</div>
-            <div style="font-size: 12px; color: var(--moon-gold); font-weight: bold; margin-top: 4px;">누르고 있는 동안만 공개됩니다</div>
-          </div>
-          <div id="peekReal" class="hidden">
-            <div style="font-size: 38px;" id="roleIcon">❓</div>
-            <div style="font-size: 20px; font-weight: 900; margin: 4px 0;" id="roleTitle">역할</div>
-            <div style="font-size: 11px; color: #ccc;" id="roleDesc">설명</div>
-          </div>
-        </div>
-        <button class="btn btn-dark" onclick="closeRoleModal()">확인 완료</button>
-      </div>
-    </div>
-
-    <!-- 비밀 메모장 -->
-    <div class="memo-modal hidden" id="memoModal">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-weight: bold; font-size: 14px;">📝 나만의 비밀 수첩</span>
-        <button onclick="toggleMemo()" style="background: none; border: none; color: #aaa; font-size: 18px; cursor: pointer;">✕</button>
-      </div>
-      <textarea id="memoContent" placeholder="대화 내용, 받은 귓속말, 의심 사항을 기록하세요..."></textarea>
-      <button class="btn btn-dark" style="margin-top: 8px;" onclick="toggleMemo()">닫기</button>
+  <!-- 각종 모달들 -->
+  <!-- 1. 역할 확인 팝업 -->
+  <div class="modal-overlay hidden" id="roleModal">
+    <div class="custom-box">
+      <h2 style="margin-bottom:10px;">당신의 직업</h2>
+      <div style="font-size:40px; margin:10px 0;" id="roleIcon">❓</div>
+      <div style="font-size:20px; font-weight:bold; color:var(--moon-gold);" id="roleTitle">직업명</div>
+      <p style="font-size:12px; color:#aaa; margin:10px 0;" id="roleDesc">설명</p>
+      <button class="btn btn-dark" onclick="closeModals()">확인 완료</button>
     </div>
   </div>
 
-  <!-- 하단 고정 액션 패널 (모바일 세로 모드 대응) -->
-  <div class="action-panel" id="actionPanel"></div>
+  <!-- 2. 직업 도감 팝업 -->
+  <div class="modal-overlay hidden" id="guideModal">
+    <div class="custom-box" style="max-height:80vh; overflow-y:auto; text-align:left;">
+      <h3 style="text-align:center; margin-bottom:10px; color:var(--moon-gold);">📖 직업 도감</h3>
+      <ul style="font-size:12px; color:#ccc; line-height:1.6; padding-left:14px;">
+        <li><b>🔍 경찰(시민):</b> 밤마다 1명 마피아 여부 조사</li>
+        <li><b>💉 의사(시민):</b> 밤마다 1명 암살 보호</li>
+        <li><b>📰 기자(시민):</b> 1회 한정 밤 취재, 다음 날 아침 직업 전체 공개</li>
+        <li><b>🏛 정치인(시민):</b> 투표권 2표 인정, 찬성 과반에도 처형 면제</li>
+        <li><b>🏹 사냥꾼(시민):</b> 밤에 조준. 자신이 마피아에게 죽으면 타깃도 동반 사망</li>
+        <li><b>🔮 영매(시민):</b> 죽은 자의 직업 확인 가능</li>
+        <li><b>💕 연인(시민):</b> 비밀 채팅 가능, 한 명 죽으면 동반 사망</li>
+        <li><b>🔪 마피아(마피아):</b> 밤마다 1명 암살, 마피아 채팅</li>
+        <li><b>🎭 스파이(마피아):</b> 살인 불가. 경찰에게 시민으로 위장 판정</li>
+        <li><b>💋 마담(마피아):</b> 밤마다 1명 유혹하여 해당 밤 능력 무력화</li>
+      </ul>
+      <button class="btn btn-dark" style="margin-top:14px;" onclick="closeModals()">닫기</button>
+    </div>
+  </div>
+
+  <!-- 3. 골든벨 캔버스 팝업 -->
+  <div class="modal-overlay hidden" id="bellModal">
+    <div style="text-align:center;">
+      <h3 style="color:var(--moon-gold); margin-bottom:10px;">🔔 기습 골든벨 퀴즈</h3>
+      <p style="font-size:12px; margin-bottom:10px;">파란 점은 총 몇 개였을까요?</p>
+      <canvas id="goldenBellCanvas"></canvas>
+      <div style="display:flex; gap:8px; margin-top:14px; justify-content:center;">
+        <button class="btn btn-dark" style="width:60px;" onclick="submitBell(3)">3</button>
+        <button class="btn btn-dark" style="width:60px;" onclick="submitBell(4)">4</button>
+        <button class="btn btn-dark" style="width:60px;" onclick="submitBell(5)">5</button>
+        <button class="btn btn-dark" style="width:60px;" onclick="submitBell(6)">6</button>
+        <button class="btn btn-dark" style="width:60px;" onclick="submitBell(7)">7</button>
+        <button class="btn btn-dark" style="width:60px;" onclick="submitBell(8)">8</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const socket = io();
+    const TOKEN_KEY = 'mafia_token_v1';
+    let myToken = localStorage.getItem(TOKEN_KEY);
+    
+    let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
+    let players = [], selectedTargetId = null, currentPhase = 'LOBBY';
+    let currentChatTab = 'public';
 
-    let myRoomCode = null;
-    let myName = '';
-    let isHost = false;
-    let myRole = null;
-    let players = [];
-    let selectedTargetId = null;
-    let currentPhase = 'LOBBY';
+    // === 오디오 신디사이저 ===
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let actx = null;
+    
+    function initAudio() { if(!actx) actx = new AudioContext(); }
+    function playBeep() {
+      if(!actx) return;
+      let osc = actx.createOscillator();
+      osc.type = 'sine'; osc.frequency.setValueAtTime(800, actx.currentTime);
+      osc.connect(actx.destination); osc.start(); osc.stop(actx.currentTime + 0.1);
+    }
+    function playHeartbeat() {
+      if(!actx) return;
+      let osc = actx.createOscillator();
+      let gain = actx.createGain();
+      osc.type = 'sine'; osc.frequency.setValueAtTime(50, actx.currentTime);
+      gain.gain.setValueAtTime(1, actx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, actx.currentTime + 0.5);
+      osc.connect(gain); gain.connect(actx.destination); osc.start(); osc.stop(actx.currentTime + 0.5);
+    }
 
-    socket.on('room_created', ({ roomCode, maxPlayers }) => {
-      myRoomCode = roomCode;
-      isHost = true;
-      document.getElementById('dispRoomCode').textContent = roomCode;
-      document.getElementById('targetCount').textContent = maxPlayers;
-      document.getElementById('startGameBtn').classList.remove('hidden');
-      document.getElementById('waitHostMsg').classList.add('hidden');
-      showWaitingRoom();
+    // === 서버 접속 및 재접속 ===
+    function createRoom() {
+      myName = document.getElementById('nickInput').value.trim() || '방장';
+      socket.emit('create_room', { hostName: myName, token: myToken });
+    }
+    function joinRoom() {
+      myName = document.getElementById('nickInput').value.trim() || '학생';
+      let code = document.getElementById('codeInput').value.trim().toUpperCase();
+      if(!code) return alert('코드를 입력하세요.');
+      socket.emit('join_room', { roomCode: code, playerName: myName, token: myToken });
+    }
+
+    socket.on('room_created', ({ roomCode, token }) => { setupJoin(roomCode, token, true); });
+    socket.on('join_success', ({ roomCode, token }) => { setupJoin(roomCode, token, false); });
+    socket.on('reconnect_success', (data) => {
+      myRoomCode = data.roomCode; myRole = data.role; isDead = data.isDead; isHost = data.isHost;
+      localStorage.setItem(TOKEN_KEY, myToken);
+      document.getElementById('viewLobby').classList.add('hidden');
+      setupRoleTabs();
+      handlePhaseChange(data.phase, null);
     });
 
-    socket.on('join_success', ({ roomCode, maxPlayers }) => {
-      myRoomCode = roomCode;
-      isHost = false;
-      document.getElementById('dispRoomCode').textContent = roomCode;
-      document.getElementById('targetCount').textContent = maxPlayers;
-      document.getElementById('startGameBtn').classList.add('hidden');
-      document.getElementById('waitHostMsg').classList.remove('hidden');
-      showWaitingRoom();
-    });
+    function setupJoin(code, token, host) {
+      myRoomCode = code; myToken = token; isHost = host;
+      localStorage.setItem(TOKEN_KEY, token);
+      document.getElementById('viewLobby').classList.add('hidden');
+      document.getElementById('viewWaitingRoom').classList.remove('hidden');
+      document.getElementById('dispRoomCode').textContent = code;
+      if(isHost) document.getElementById('hostOptions').classList.remove('hidden');
+    }
 
-    socket.on('error_msg', (msg) => alert(msg));
-    socket.on('announcement', (msg) => alert(`📢 ${msg}`));
-
-    socket.on('player_list_updated', (updatedPlayers) => {
-      players = updatedPlayers;
+    socket.on('player_list_updated', (pList) => {
+      players = pList;
       document.getElementById('currentCount').textContent = players.length;
-      const list = document.getElementById('lobbyPlayerList');
-      list.innerHTML = '';
-      players.forEach(p => {
-        const item = document.createElement('div');
-        item.style.cssText = 'padding:6px 10px; background:#11151f; border-radius:4px; font-size:12px; display:flex; justify-content:space-between;';
-        item.innerHTML = `<span>👤 ${p.name}</span> <span style="color:#888;">${p.isHost ? '방장' : '참가자'}</span>`;
-        list.appendChild(item);
-      });
+      let me = players.find(p => p.token === myToken);
+      if(me) { isDead = me.isDead; myRole = me.role; }
       renderGameGrid();
     });
 
-    socket.on('timer_tick', ({ remainingTime }) => {
-      const m = String(Math.floor(remainingTime / 60)).padStart(2, '0');
-      const s = String(remainingTime % 60).padStart(2, '0');
-      const box = document.getElementById('timerBox');
-      box.textContent = `${m}:${s}`;
-      if (remainingTime <= 10) box.classList.add('timer-warning');
-      else box.classList.remove('timer-warning');
-    });
+    // === 게임 진행 ===
+    function startGame() {
+      let cbs = document.querySelectorAll('.role-cb:checked');
+      let selected = Array.from(cbs).map(cb => cb.value);
+      socket.emit('start_game', { roomCode: myRoomCode, selectedRoles: selected });
+    }
 
     socket.on('role_assigned', ({ role }) => {
       myRole = role;
-      document.getElementById('memoBtn').classList.remove('hidden');
       document.getElementById('viewWaitingRoom').classList.add('hidden');
       document.getElementById('viewMainGame').classList.remove('hidden');
-      setupRoleInfo(role);
+      document.getElementById('marqueeBox').classList.remove('hidden');
+      setupRoleTabs();
+      showRoleInfo();
+    });
+
+    function setupRoleTabs() {
+      if(['mafia','spy','madam'].includes(myRole)) document.getElementById('tabMaf').classList.remove('hidden');
+      if(myRole === 'lover') document.getElementById('tabLov').classList.remove('hidden');
+    }
+
+    function showRoleInfo() {
+      let r = myRole;
+      let title="시민", icon="👤", desc="낮에 마피아를 찾으세요.";
+      if(r==='mafia'){title="마피아"; icon="🔪"; desc="밤에 암살";}
+      else if(r==='spy'){title="스파이"; icon="🎭"; desc="경찰에게 시민으로 위장";}
+      else if(r==='madam'){title="마담"; icon="💋"; desc="유혹하여 능력 무력화";}
+      else if(r==='police'){title="경찰"; icon="🔍"; desc="밤에 마피아 조사";}
+      else if(r==='doctor'){title="의사"; icon="💉"; desc="밤에 암살 방어";}
+      else if(r==='reporter'){title="기자"; icon="📰"; desc="1회 한정 밤 특종 취재";}
+      else if(r==='politician'){title="정치인"; icon="🏛"; desc="투표권 2표, 처형 면제";}
+      else if(r==='hunter'){title="사냥꾼"; icon="🏹"; desc="밤 조준, 마피아에게 죽으면 길동무";}
+      else if(r==='medium'){title="영매"; icon="🔮"; desc="사망자 직업 확인";}
+      else if(r==='lover'){title="연인"; icon="💕"; desc="비밀 채팅, 1명 죽으면 동반사망";}
+      
+      document.getElementById('roleTitle').textContent = title;
+      document.getElementById('roleIcon').textContent = icon;
+      document.getElementById('roleDesc').textContent = desc;
       document.getElementById('roleModal').classList.remove('hidden');
+    }
+
+    function closeModals() { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden')); }
+
+    socket.on('timer_tick', ({ remainingTime }) => {
+      let m = String(Math.floor(remainingTime/60)).padStart(2,'0'), s = String(remainingTime%60).padStart(2,'0');
+      document.getElementById('timerBox').textContent = `${m}:${s}`;
+      if(remainingTime <= 5) playBeep();
     });
 
-    socket.on('phase_changed', ({ phase, suspectName }) => {
-      handlePhaseChange(phase, suspectName);
-    });
-
-    socket.on('night_result', ({ killedName, winner, dayCount }) => {
-      if (winner) {
-        alert(`🏆 게임 종료! [${winner}]의 승리입니다!`);
-        location.reload();
-        return;
-      }
-      if (killedName) {
-        alert(`☀️ DAY ${dayCount} 아침이 밝았습니다.\n간밤에 [${killedName}]님이 마피아의 습격으로 사망했습니다!`);
-      } else {
-        alert(`☀️ DAY ${dayCount} 아침이 밝았습니다.\n의사의 활약으로 간밤에 아무도 사망하지 않았습니다!`);
-      }
-      handlePhaseChange('DAY_TALK');
-    });
-
-    socket.on('police_investigation_result', ({ targetName, isMafia }) => {
-      if (isMafia) {
-        alert(`🔍 경찰 조사 결과:\n[${targetName}]님은 [마피아]가 맞습니다!`);
-      } else {
-        alert(`🔍 경찰 조사 결과:\n[${targetName}]님은 [마피아가 아닙니다 (시민 팀)]`);
-      }
-    });
-
-    socket.on('mafia_target_updated', ({ targetName }) => {
-      const logs = document.getElementById('mafiaLogs');
-      const div = document.createElement('div');
-      div.className = 'chat-msg';
-      div.style.color = 'var(--blood-glow)';
-      div.innerHTML = `🎯 <b>동료 마피아가 [${targetName}]님을 타깃으로 선택했습니다.</b>`;
-      logs.appendChild(div);
-      logs.scrollTop = logs.scrollHeight;
-    });
-
-    socket.on('mafia_chat_received', ({ sender, text }) => {
-      const logs = document.getElementById('mafiaLogs');
-      const div = document.createElement('div');
-      div.className = 'chat-msg';
-      div.innerHTML = `<b>${sender}:</b> ${text}`;
-      logs.appendChild(div);
-      logs.scrollTop = logs.scrollHeight;
-    });
-
-    socket.on('whisper_received', ({ senderName, message }) => {
-      alert(`📩 [비밀 귓속말 도착]\n보낸 사람: ${senderName}\n내용: ${message}`);
-      const memo = document.getElementById('memoContent');
-      memo.value += `\n[귓속말 from ${senderName}]: ${message}`;
-    });
-
-    socket.on('whisper_sent_success', ({ targetName, message, remainingCount }) => {
-      alert(`[${targetName}]님에게 귓속말을 전송했습니다.\n(오늘 남은 귓속말 대상: ${remainingCount}명)`);
-      const memo = document.getElementById('memoContent');
-      memo.value += `\n[내가 보낸 귓속말 to ${targetName}]: ${message}`;
-      closeWhisperBox();
-    });
-
-    function switchLobbyTab(tab) {
-      if (tab === 'create') {
-        document.getElementById('tabCreate').classList.add('active');
-        document.getElementById('tabJoin').classList.remove('active');
-        document.getElementById('createOptions').classList.remove('hidden');
-        document.getElementById('joinOptions').classList.add('hidden');
-      } else {
-        document.getElementById('tabJoin').classList.add('active');
-        document.getElementById('tabCreate').classList.remove('active');
-        document.getElementById('joinOptions').classList.remove('hidden');
-        document.getElementById('createOptions').classList.add('hidden');
-      }
-    }
-
-    function showWaitingRoom() {
-      document.getElementById('viewLobby').classList.add('hidden');
-      document.getElementById('viewWaitingRoom').classList.remove('hidden');
-    }
-
-    function requestCreateRoom() {
-      myName = document.getElementById('nicknameInput').value.trim() || '선생님';
-      const maxPlayers = parseInt(document.getElementById('maxPlayerRange').value);
-      const talkTime = parseInt(document.getElementById('talkTimeRange').value) * 60;
-      socket.emit('create_room', { hostName: myName, playerCount: maxPlayers, talkTime });
-    }
-
-    function requestJoinRoom() {
-      myName = document.getElementById('nicknameInput').value.trim() || '학생';
-      const code = document.getElementById('roomCodeInput').value.trim().toUpperCase();
-      if (!code) return alert('방 코드를 입력하세요.');
-      socket.emit('join_room', { roomCode: code, playerName: myName });
-    }
-
-    function requestStartGame() {
-      socket.emit('start_game', { roomCode: myRoomCode });
-    }
-
-    function renderGameGrid() {
-      const grid = document.getElementById('playerGrid');
-      grid.innerHTML = '';
-      players.forEach(p => {
-        const card = document.createElement('div');
-        card.className = `player-card ${p.isDead ? 'dead' : ''} ${selectedTargetId === p.id ? 'selected' : ''}`;
-        card.onclick = () => {
-          if (p.isDead) return;
-          selectedTargetId = p.id;
-          renderGameGrid();
-
-          if (currentPhase === 'DAY_TALK' && p.id !== socket.id) {
-            openWhisperBox(p.name);
-          }
-        };
-        card.innerHTML = `
-          <div style="font-size:22px;">${p.isDead ? '💀' : '👤'}</div>
-          <div><div class="card-name">${p.name}</div><div style="font-size:10px; color:#777;">${p.isDead ? '사망' : '생존'}</div></div>
-          ${p.votes > 0 ? `<div class="vote-count-pill">${p.votes}표</div>` : ''}
-        `;
-        grid.appendChild(card);
-      });
-    }
-
-    function openWhisperBox(targetName) {
-      document.getElementById('whisperTargetName').textContent = targetName;
-      document.getElementById('whisperSection').classList.remove('hidden');
-    }
-
-    function closeWhisperBox() {
-      document.getElementById('whisperSection').classList.add('hidden');
-      document.getElementById('whisperInput').value = '';
-    }
-
-    function sendWhisperMessage() {
-      const text = document.getElementById('whisperInput').value.trim();
-      if (!text) return alert('메시지를 입력하세요.');
-      socket.emit('send_whisper', {
-        roomCode: myRoomCode,
-        targetId: selectedTargetId,
-        message: text
-      });
-    }
-
-    function setupRoleInfo(role) {
-      const icon = document.getElementById('roleIcon');
-      const title = document.getElementById('roleTitle');
-      const desc = document.getElementById('roleDesc');
-      if (role === 'mafia') {
-        icon.textContent = "🔪"; title.textContent = "마피아"; title.style.color = "var(--blood-red)";
-        desc.textContent = "밤에 전용 채팅으로 상의하고 타깃을 암살하세요.";
-      } else if (role === 'police') {
-        icon.textContent = "🔍"; title.textContent = "경찰"; title.style.color = "var(--cold-blue)";
-        desc.textContent = "밤마다 1명을 조사해 마피아 여부를 확인하세요.";
-      } else if (role === 'doctor') {
-        icon.textContent = "💉"; title.textContent = "의사"; title.style.color = "var(--toxic-green)";
-        desc.textContent = "밤마다 1명을 마피아의 습격으로부터 치료하세요.";
-      } else if (role === 'soldier') {
-        icon.textContent = "🛡️"; title.textContent = "군인"; title.style.color = "#e67e22";
-        desc.textContent = "마피아의 첫 번째 암살 시도를 1회 방어할 수 있습니다.";
-      } else if (role === 'traitor') {
-        icon.textContent = "🎭"; title.textContent = "배신자"; title.style.color = "#9b59b6";
-        desc.textContent = "시민 팀이지만 마피아의 승리를 돕는 비밀 조력자입니다.";
-      } else {
-        icon.textContent = "👤"; title.textContent = "선량한 시민"; title.style.color = "#fff";
-        desc.textContent = "낮의 토론과 알리바이를 분석해 마피아를 찾으세요.";
-      }
-    }
-
-    function showSecretRole() {
-      document.getElementById('peekPlaceholder').classList.add('hidden');
-      document.getElementById('peekReal').classList.remove('hidden');
-    }
-    function hideSecretRole() {
-      document.getElementById('peekPlaceholder').classList.remove('hidden');
-      document.getElementById('peekReal').classList.add('hidden');
-    }
-    function closeRoleModal() {
-      document.getElementById('roleModal').classList.add('hidden');
-    }
+    socket.on('phase_changed', ({ phase, suspectName }) => { handlePhaseChange(phase, suspectName); });
 
     function handlePhaseChange(phase, suspectName) {
-      currentPhase = phase;
-      document.getElementById('viewMainGame').classList.remove('hidden');
-      document.getElementById('viewTrialDefense').classList.add('hidden');
-      document.getElementById('viewTrialFinal').classList.add('hidden');
-      document.getElementById('mafiaNightSection').classList.add('hidden');
-      closeWhisperBox();
-      selectedTargetId = null;
+      initAudio(); currentPhase = phase; selectedTargetId = null;
+      let title = document.getElementById('phaseTitle'), sub = document.getElementById('phaseSubtitle');
+      let act = document.getElementById('actionPanel');
 
-      const title = document.getElementById('phaseTitle');
-      const sub = document.getElementById('phaseSubtitle');
-      const actions = document.getElementById('actionPanel');
-
-      if (phase === 'DAY_TALK') {
-        title.textContent = "☀️ 낮: 자유 토론";
-        title.style.color = "var(--moon-gold)";
-        sub.textContent = "대면 토론 시간입니다. (카드 터치 시 1:1 비밀 귓속말)";
-        actions.innerHTML = isHost ? `<button class="btn btn-blood" onclick="socket.emit('trigger_vote1', {roomCode: myRoomCode})">🗳️ 1차 지목 투표 시작 (방장 조기마감)</button>` : '';
+      if(phase === 'DAY_TALK') {
+        title.textContent = "☀️ 낮: 자유 토론"; sub.textContent = "채팅, 익명 제보, 귓속말 활용";
+        act.innerHTML = `<div style="display:flex; gap:8px;">
+          <button class="btn btn-dark" onclick="sendAnonTip()">익명 제보 보내기</button>
+          ${!isDead ? `<button class="btn btn-blood" onclick="socket.emit('skip_vote_req', {roomCode: myRoomCode})">투표로 조기 전환</button>` : ''}
+        </div>`;
       } else if (phase === 'DAY_VOTE1') {
-        title.textContent = "🗳️ 1차 용의자 지목 투표";
-        title.style.color = "var(--blood-glow)";
-        sub.textContent = "의심스러운 사람을 터치해 투표를 확정하세요.";
-        actions.innerHTML = `<button class="btn btn-blood" onclick="submitVote1()">투표 제출</button>`;
+        title.textContent = "🗳️ 1차 지목 투표"; sub.textContent = "카드 터치 후 제출";
+        act.innerHTML = !isDead ? `<button class="btn btn-blood" onclick="submitNight('cast_vote1')">투표 제출</button>` : '';
       } else if (phase === 'TRIAL_DEFENSE') {
-        document.getElementById('viewMainGame').classList.add('hidden');
-        document.getElementById('viewTrialDefense').classList.remove('hidden');
-        document.getElementById('suspectName').textContent = suspectName;
-        title.textContent = "⚠️ 최후의 변론 (해명 타임)";
-        sub.textContent = "지목된 학생의 육성 해명을 경청하세요.";
-        actions.innerHTML = isHost ? `<button class="btn btn-dark" onclick="socket.emit('trigger_final_vote', {roomCode: myRoomCode})">⚖️ 최종 찬반 투표 시작 (방장 조기마감)</button>` : '';
+        title.textContent = `⚠️ 최후의 변론: ${suspectName}`; sub.textContent = "용의자 해명 시간"; act.innerHTML = '';
       } else if (phase === 'TRIAL_FINAL') {
-        document.getElementById('viewTrialDefense').classList.add('hidden');
-        document.getElementById('viewTrialFinal').classList.remove('hidden');
-        title.textContent = "⚖️ 최종 처형 찬반 투표";
-        sub.textContent = "해명을 믿으십니까? 과반 찬성 시 처형됩니다.";
-        actions.innerHTML = '';
+        title.textContent = "⚖️ 찬반 투표"; sub.textContent = "처형하시겠습니까?";
+        act.innerHTML = !isDead ? `<div style="display:flex; gap:8px;"><button class="btn btn-blood" onclick="submitFinal(true)">처형</button><button class="btn btn-green" onclick="submitFinal(false)">살리기</button></div>` : '';
       } else if (phase === 'NIGHT') {
-        title.textContent = "🌙 밤이 되었습니다";
-        title.style.color = "var(--cold-blue)";
-        sub.textContent = "모두 스마트폰을 조작하여 정체를 숨기세요.";
-        if (myRole === 'mafia') {
-          document.getElementById('mafiaNightSection').classList.remove('hidden');
-          actions.innerHTML = `<button class="btn btn-blood" onclick="submitNightAction()">🔪 타깃 암살 지목 확정</button>`;
-        } else if (myRole === 'police') {
-          actions.innerHTML = `<button class="btn btn-dark" onclick="submitNightAction()">🔍 마피아 여부 조사 확정</button>`;
-        } else if (myRole === 'doctor') {
-          actions.innerHTML = `<button class="btn btn-green" onclick="submitNightAction()">💉 치료 보호 대상 확정</button>`;
-        } else {
-          actions.innerHTML = `<button class="btn btn-dark" onclick="alert('관찰 기록이 접수되었습니다. 고개를 숙이세요.')">📝 의심자 기록 (위장 제출)</button>`;
+        title.textContent = "🌙 밤 행동 선택"; sub.textContent = "카드를 누르고 능력을 확정하세요.";
+        if(isDead) act.innerHTML = `<button class="btn btn-dark">관전 중</button>`;
+        else {
+          let btnText = "확인 완료(능력 없음)"; let btnClass = "btn-dark";
+          if(myRole==='mafia'){btnText="암살 지목"; btnClass="btn-blood";}
+          if(myRole==='madam'){btnText="유혹 지목"; btnClass="btn-blood";}
+          if(myRole==='police'){btnText="마피아 조사"; btnClass="btn-dark";}
+          if(myRole==='doctor'){btnText="보호 대상 지목"; btnClass="btn-green";}
+          if(myRole==='reporter'){btnText="특종 취재 지목"; btnClass="btn-dark";}
+          if(myRole==='hunter'){btnText="길동무 조준"; btnClass="btn-blood";}
+          if(myRole==='medium'){btnText="영매 교감 지목(무덤)"; btnClass="btn-dark";}
+          act.innerHTML = `<button class="btn ${btnClass}" onclick="submitNight('night_action')">${btnText}</button>`;
         }
       }
       renderGameGrid();
     }
 
-    function submitVote1() {
-      if (!selectedTargetId) return alert('투표할 대상을 선택하세요.');
-      socket.emit('cast_vote1', { roomCode: myRoomCode, targetId: selectedTargetId });
-      alert('투표가 제출되었습니다.');
+    function renderGameGrid() {
+      let grid = document.getElementById('playerGrid'); grid.innerHTML = '';
+      players.forEach(p => {
+        let card = document.createElement('div');
+        let isSel = p.id === selectedTargetId ? 'selected' : '';
+        let isD = p.isDead ? 'dead' : '';
+        card.className = `player-card ${isD} ${isSel}`;
+        
+        // 관전자 모드 (사망자에게 살아있는 사람 진영 표시)
+        let alignment = '';
+        if (isDead && !p.isDead) alignment = ['mafia','spy','madam'].includes(p.role) ? '🔴마' : '🔵시';
+        
+        card.innerHTML = `
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="font-size:22px;">${p.isDead ? '💀' : '👤'}</div>
+            <div>
+              <div style="font-size:13px; font-weight:bold;">${p.name} <span style="font-size:10px;">${alignment}</span></div>
+            </div>
+          </div>
+          <div class="voter-badges" id="badges_${p.id}"></div>
+        `;
+        card.onclick = () => { if(!p.isDead || (myRole==='medium' && currentPhase==='NIGHT')) { selectedTargetId = p.id; renderGameGrid(); } };
+        grid.appendChild(card);
+      });
     }
 
-    function submitFinalVote(isExecute) {
-      socket.emit('cast_vote_final', { roomCode: myRoomCode, isExecute });
-      alert('최종 찬반 투표가 제출되었습니다.');
+    // 투표 뱃지 업데이트
+    socket.on('vote_update', (votesObj) => {
+      document.querySelectorAll('.voter-badges').forEach(b => b.innerHTML = '');
+      for(let [voterId, tId] of Object.entries(votesObj)){
+        let voter = players.find(p=>p.id===voterId);
+        let badgeBox = document.getElementById('badges_'+tId);
+        if(badgeBox && voter) badgeBox.innerHTML += `<span class="badge">${voter.name}</span>`;
+      }
+    });
+    
+    socket.on('vote_summary', (votersOf) => {
+      let text = "[투표 결과 요약]\n";
+      for(let tId in votersOf){
+        let target = players.find(p=>p.id===tId);
+        text += `${votersOf[tId].join(', ')} ➔ ${target?target.name:'알수없음'}\n`;
+      }
+      alert(text);
+    });
+
+    // === 행동 제출 ===
+    function submitNight(evt) {
+      if(!selectedTargetId && myRole!=='citizen' && evt!=='cast_vote1') return alert('대상을 선택하세요.');
+      socket.emit(evt, { roomCode: myRoomCode, targetId: selectedTargetId, actionType: myRole });
+      document.getElementById('actionPanel').innerHTML = '<button class="btn btn-dark">제출 완료</button>';
+    }
+    function submitFinal(isExec) {
+      socket.emit('cast_vote_final', { roomCode: myRoomCode, isExecute: isExec });
+      document.getElementById('actionPanel').innerHTML = '<button class="btn btn-dark">제출 완료</button>';
     }
 
-    function submitNightAction() {
-      if (!selectedTargetId) return alert('대상을 먼저 선택하세요.');
-      socket.emit('night_action', { roomCode: myRoomCode, targetId: selectedTargetId });
-      alert('행동이 접수되었습니다.');
+    // === 결과 & 단서 ===
+    socket.on('night_result', (data) => {
+      if(data.winner) { alert(`🏆 게임 종료! [${data.winner}] 승리!`); location.reload(); return; }
+      let txt = `☀️ 아침이 밝았습니다.\n`;
+      txt += data.killedNames.length > 0 ? `사망자: ${data.killedNames.join(', ')}` : `사망자가 없습니다.`;
+      if(data.news) txt += `\n\n${data.news}`;
+      alert(txt);
+    });
+    socket.on('evidence_received', (txt) => { alert("📜 [비밀 물증 획득]\n" + txt); });
+    socket.on('system_msg', (msg) => { alert("💡 " + msg); });
+    socket.on('error_msg', (msg) => { alert("❌ " + msg); });
+
+    // === 채팅 및 제보 ===
+    function switchChat(tab) {
+      currentChatTab = tab;
+      document.querySelectorAll('.chat-tab').forEach(t=>t.classList.remove('active'));
+      let id = tab==='public'?'tabPub':tab==='mafia'?'tabMaf':'tabLov';
+      document.getElementById(id).classList.add('active');
+    }
+    function sendChat() {
+      let val = document.getElementById('chatInput').value.trim(); if(!val) return;
+      if(currentChatTab==='public') socket.emit('public_chat', { roomCode: myRoomCode, msg: val, senderName: myName });
+      else socket.emit('group_chat', { roomCode: myRoomCode, group: currentChatTab, msg: val, senderName: myName });
+      document.getElementById('chatInput').value = '';
+    }
+    socket.on('public_chat_received', (d) => appendChat(d.sender, d.text, d.isDead ? 'gray' : 'white'));
+    socket.on('group_chat_received', (d) => appendChat(d.sender, d.text, d.group==='mafia'?'var(--blood-red)':'pink'));
+    
+    function appendChat(sender, text, color) {
+      let box = document.getElementById('chatLogs');
+      box.innerHTML += `<div style="color:${color}"><b>${sender}</b>: ${text}</div>`;
+      box.scrollTop = box.scrollHeight;
     }
 
-    function sendMafiaChat() {
-      const input = document.getElementById('mafiaInput');
-      const val = input.value.trim();
-      if (!val) return;
-      socket.emit('mafia_chat', { roomCode: myRoomCode, msg: val, senderName: myName });
-      input.value = '';
+    function sendAnonTip() {
+      let t = prompt("익명으로 제보할 내용을 입력하세요.");
+      if(t) socket.emit('send_anon_tip', { roomCode: myRoomCode, msg: t });
     }
+    socket.on('anon_tip_broadcast', (msg) => {
+      document.getElementById('marqueeText').textContent = `[익명 제보] ${msg}`;
+    });
 
-    function toggleMemo() {
-      document.getElementById('memoModal').classList.toggle('hidden');
+    // === 골든벨 미니게임 ===
+    let gbCtx, bellDots = 0;
+    socket.on('golden_bell_start', ({ dots }) => {
+      bellDots = dots;
+      document.getElementById('bellModal').classList.remove('hidden');
+      let cvs = document.getElementById('goldenBellCanvas');
+      gbCtx = cvs.getContext('2d');
+      cvs.width = 300; cvs.height = 200;
+      gbCtx.clearRect(0,0,300,200);
+      
+      // 빨강/노랑 함정 점 그리기 (20개)
+      for(let i=0; i<20; i++){
+        gbCtx.fillStyle = Math.random()>0.5 ? 'red' : 'yellow';
+        gbCtx.beginPath(); gbCtx.arc(Math.random()*280+10, Math.random()*180+10, 8, 0, Math.PI*2); gbCtx.fill();
+      }
+      // 진짜 파란 점 그리기
+      for(let i=0; i<dots; i++){
+        gbCtx.fillStyle = '#3498db';
+        gbCtx.beginPath(); gbCtx.arc(Math.random()*280+10, Math.random()*180+10, 8, 0, Math.PI*2); gbCtx.fill();
+      }
+      // 1.5초 후 가리기
+      setTimeout(() => { gbCtx.clearRect(0,0,300,200); gbCtx.fillStyle='#fff'; gbCtx.fillText("몇 개였을까요?", 110, 100); }, 1500);
+    });
+
+    function submitBell(ans) {
+      socket.emit('golden_bell_answer', { roomCode: myRoomCode, ans: ans });
+      document.getElementById('bellModal').classList.add('hidden');
     }
   </script>
 </body>
