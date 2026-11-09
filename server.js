@@ -288,7 +288,7 @@ io.on('connection', (socket) => {
       id: socket.id, name: playerName, token: newToken, role: null, 
       isDead: false, isHost: isHost, whisperedToday: [], skipVote: false,
       playerNum: room.players.length + 1,
-      avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)] // 랜덤 캐릭터 부여
+      avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)]
     });
     
     if (isHost) room.hostId = socket.id;
@@ -386,8 +386,11 @@ io.on('connection', (socket) => {
         sender.whisperedToday.push(targetId);
       }
     }
+    
+    // 수신자에게 전송
     io.to(target.id).emit('whisper_received', { senderName: `${sender.avatar} ${sender.name}`, message });
-    socket.emit('system_msg', `[${target.name}]님에게 귓속말을 전송했습니다.`);
+    // 송신자에게 성공 및 기록용 로그 전송 (비밀 수첩 기록용)
+    socket.emit('whisper_sent_success', { targetName: `${target.avatar} ${target.name}`, message });
   });
 
   socket.on('cast_vote1', ({ roomCode, targetId }) => {
@@ -424,7 +427,9 @@ io.on('connection', (socket) => {
       let alive = room.players.filter(p=>!p.isDead);
       let randP = alive[Math.floor(Math.random() * alive.length)];
       let team = ['mafia','spy','madam'].includes(randP.role) ? '마피아 팀' : '시민 팀';
-      socket.emit('system_msg', `🔔 [비밀 힌트] ${randP.avatar} ${randP.name}님은 [${team}] 소속입니다.`);
+      
+      // 정답자에게 힌트 전송 (수첩 기록용)
+      socket.emit('golden_bell_hint', `[🔔 골든벨 힌트] ${randP.avatar} ${randP.name}님은 [${team}] 소속입니다.`);
     }
   });
 });
