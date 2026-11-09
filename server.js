@@ -12,6 +12,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
 
+const AVATARS = ['🐶','🐱','🦊','🐻','🐰','🐼','🦁','🐯','🐸','🐵','🦄','🦉','🐙','🦖','👽'];
+
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let res = '';
@@ -183,18 +185,16 @@ function tallyVote1(room) {
     else if (cnt === maxVote && maxVote > 0) { isTie = true; }
   }
 
-  // 투표 결과(화살표 팝업용 데이터) 전송
   const summaryArr = [];
   for(let tId in votersOf){
     let target = room.players.find(p=>p.id===tId);
-    if(target) summaryArr.push({ targetName: target.name, voters: votersOf[tId] });
+    if(target) summaryArr.push({ targetName: target.name, targetAvatar: target.avatar, voters: votersOf[tId] });
   }
 
   if (!topTarget || isTie || maxVote === 0) {
     io.to(room.code).emit('vote_summary_modal', { summaryArr, resultMsg: '동표/무투표로 처형 없이 밤으로 넘어갑니다.' });
-    // 방장이 결과창을 직접 닫고 밤으로 넘기기 위해 자동 딜레이 제거, 방장에게 버튼 권한 부여용
     room.phase = 'VOTE_RESULT';
-    io.to(room.code).emit('phase_changed', { phase: 'VOTE_RESULT', nextPhase: 'NIGHT' });
+    io.to(room.code).emit('phase_sync', { nextPhase: 'NIGHT', suspectName: null });
     return;
   }
 
@@ -203,7 +203,7 @@ function tallyVote1(room) {
   
   io.to(room.code).emit('vote_summary_modal', { summaryArr, resultMsg: `최다 득표자 [${suspect.name}] 해명석으로 이동합니다.` });
   room.phase = 'VOTE_RESULT';
-  io.to(room.code).emit('phase_changed', { phase: 'VOTE_RESULT', nextPhase: 'TRIAL_DEFENSE', suspectName: suspect.name });
+  io.to(room.code).emit('phase_sync', { nextPhase: 'TRIAL_DEFENSE', suspectName: suspect.name });
 }
 
 function startFinalVote(room) {
@@ -287,7 +287,8 @@ io.on('connection', (socket) => {
     room.players.push({
       id: socket.id, name: playerName, token: newToken, role: null, 
       isDead: false, isHost: isHost, whisperedToday: [], skipVote: false,
-      playerNum: room.players.length + 1 // 입장 순서대로 고유 번호 부여
+      playerNum: room.players.length + 1,
+      avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)] // 랜덤 캐릭터 부여
     });
     
     if (isHost) room.hostId = socket.id;
@@ -346,7 +347,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // 방장이 수동으로 페이즈 넘기기 (투표 결과 확인 후)
   socket.on('host_next_phase', ({ roomCode, nextPhase, suspectName }) => {
     const room = rooms[roomCode];
     if (!room || socket.id !== room.hostId) return;
@@ -364,12 +364,12 @@ io.on('connection', (socket) => {
   socket.on('public_chat', ({ roomCode, msg, senderName }) => {
     let p = rooms[roomCode]?.players.find(x => x.id === socket.id);
     if (!p) return;
-    io.to(roomCode).emit('public_chat_received', { sender: `#${p.playerNum} ${senderName}`, text: msg, isDead: p.isDead });
+    io.to(roomCode).emit('public_chat_received', { sender: `${p.avatar} ${senderName}`, text: msg, isDead: p.isDead });
   });
 
   socket.on('group_chat', ({ roomCode, group, msg, senderName }) => {
     let p = rooms[roomCode]?.players.find(x => x.id === socket.id);
-    io.to(roomCode + '_' + group).emit('group_chat_received', { sender: `#${p.playerNum} ${senderName}`, text: msg, group });
+    io.to(roomCode + '_' + group).emit('group_chat_received', { sender: `${p.avatar} ${senderName}`, text: msg, group });
   });
 
   socket.on('send_whisper', ({ roomCode, targetId, message }) => {
@@ -386,7 +386,7 @@ io.on('connection', (socket) => {
         sender.whisperedToday.push(targetId);
       }
     }
-    io.to(target.id).emit('whisper_received', { senderName: `#${sender.playerNum} ${sender.name}`, message });
+    io.to(target.id).emit('whisper_received', { senderName: `${sender.avatar} ${sender.name}`, message });
     socket.emit('system_msg', `[${target.name}]님에게 귓속말을 전송했습니다.`);
   });
 
@@ -424,7 +424,7 @@ io.on('connection', (socket) => {
       let alive = room.players.filter(p=>!p.isDead);
       let randP = alive[Math.floor(Math.random() * alive.length)];
       let team = ['mafia','spy','madam'].includes(randP.role) ? '마피아 팀' : '시민 팀';
-      socket.emit('system_msg', `🔔 [골든벨 비밀 힌트] #${randP.playerNum} ${randP.name}님은 [${team}] 소속입니다.`);
+      socket.emit('system_msg', `🔔 [비밀 힌트] ${randP.avatar} ${randP.name}님은 [${team}] 소속입니다.`);
     }
   });
 });
