@@ -21,7 +21,7 @@
       color: var(--text-white); height: 100vh; display: flex; flex-direction: column; overflow: hidden;
       transition: background 1.5s ease-in-out;
     }
-    body.phase-night { background: linear-gradient(135deg, #0c0003, #000000); }
+    body.phase-night { background: linear-gradient(135deg, #050000, #000000); }
     body.phase-trial { background: linear-gradient(135deg, #3b0712, #1a0b1c); }
 
     .glass-panel {
@@ -83,10 +83,8 @@
 </head>
 <body>
   
-  <!-- 낮(추리), 밤(드론 앰비언트), 해명석(초침) BGM -->
-  <audio id="bgmDay" loop src="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3"></audio>
-  <audio id="bgmNight" loop src="https://cdn.pixabay.com/download/audio/2021/08/09/audio_8dfdf3692d.mp3"></audio> 
-  <audio id="bgmTrial" loop src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3"></audio>
+  <!-- 낮(추리) BGM -->
+  <audio id="bgmDay" loop src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"></audio>
 
   <div class="marquee-container hidden" id="marqueeBox">
     <div class="marquee-content" id="marqueeText">대기실입니다. 방장이 설정을 마칠 때까지 기다려주세요.</div>
@@ -94,6 +92,7 @@
 
   <div class="app-screen">
     <div style="position: absolute; top: 14px; right: 14px; z-index: 50; display: flex; gap: 8px;">
+      <!-- [1] 완벽 보존된 메모장 버튼 -->
       <button class="glass-panel hidden" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="toggleMemo()" id="memoBtn">📝 수첩</button>
       <button class="glass-panel" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="toggleBGM()" id="bgmBtn">🔊 BGM 켜짐</button>
       <button class="glass-panel" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="document.getElementById('guideModal').classList.remove('hidden')">📖 도감</button>
@@ -124,6 +123,7 @@
         <div style="font-size:40px; font-weight:900; color:var(--blood-glow); text-shadow: 0 0 15px rgba(255,71,87,0.5); margin-bottom:10px;" id="dispRoomCode">----</div>
         <div style="font-size:14px; margin-bottom:10px;">참여 인원: <b id="currentCount" style="color:#fff;">0</b>명</div>
         
+        <!-- [2] 동물 아바타 및 번호 리스트 보존 -->
         <div id="lobbyPlayerList" style="display:flex; flex-direction:column; gap:8px; max-height:180px; overflow-y:auto; margin-bottom:16px; text-align:left; border:1px solid rgba(255,255,255,0.1); padding:8px; border-radius:8px; background:rgba(0,0,0,0.3);">
         </div>
 
@@ -149,6 +149,7 @@
     <div id="viewMainGame" class="hidden">
       <div class="player-grid" id="playerGrid"></div>
       
+      <!-- [3] 비밀 귓속말 창 보존 -->
       <div id="whisperSection" class="custom-box glass-panel hidden" style="margin-bottom:16px; padding:12px; max-width:100%;">
         <div style="font-size: 13px; color: #7cb5ec; display: flex; justify-content: space-between; margin-bottom:10px;">
           <span>💬 [<b id="whisperTargetName" style="color:var(--moon-gold)">상대방</b>]에게 은밀히 쪽지 보내기</span>
@@ -163,6 +164,7 @@
       <div class="chat-container glass-panel">
         <div class="chat-tabs">
           <div class="chat-tab active" id="tabPub" onclick="switchChat('public')">전체 채팅</div>
+          <!-- [4] 마피아/연인 핫라인 탭 보존 -->
           <div class="chat-tab hidden" id="tabMaf" onclick="switchChat('mafia')">🔪 핫라인</div>
           <div class="chat-tab hidden" id="tabLov" onclick="switchChat('lover')">💕 연인</div>
         </div>
@@ -177,6 +179,7 @@
 
   <div class="action-panel" id="actionPanel"></div>
 
+  <!-- [5] 꾹 눌러보기 기믹 보존 모달 -->
   <div class="modal-overlay hidden" id="roleModal">
     <div class="custom-box glass-panel">
       <div style="font-size: 18px; font-weight: bold; color:var(--moon-gold);">🔒 당신의 비밀 역할</div>
@@ -198,17 +201,19 @@
     </div>
   </div>
 
+  <!-- [6] 개인 수첩 & 로그 자동 기록 보존 모달 -->
   <div class="modal-overlay hidden" id="memoModal">
     <div class="custom-box glass-panel" style="width:90%; height:70%; display:flex; flex-direction:column; padding:16px; margin:auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <span style="font-weight: bold; font-size: 16px; color:var(--moon-gold);">📝 나만의 비밀 수첩</span>
         <button onclick="toggleMemo()" style="background: none; border: none; color: #aaa; font-size: 20px; cursor: pointer;">✕</button>
       </div>
-      <textarea id="memoContent" placeholder="자유로운 추리 내용, 단서, 주고받은 귓속말 기록이 이곳에 저장됩니다..." style="flex:1; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:8px; color:#fff; padding:12px; font-size:13px; resize:none; outline:none; line-height:1.6;"></textarea>
+      <textarea id="memoContent" placeholder="자유로운 추리 내용, 획득한 단서, 주고받은 귓속말 기록이 이 곳에 영구 저장됩니다..." style="flex:1; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2); border-radius:8px; color:#fff; padding:12px; font-size:13px; resize:none; outline:none; line-height:1.6;"></textarea>
       <button class="btn btn-dark" style="margin-top: 12px;" onclick="toggleMemo()">닫기</button>
     </div>
   </div>
 
+  <!-- [7] 투표 결과창 영구 보존 모달 (방장 통제) -->
   <div class="modal-overlay hidden" id="voteSummaryModal">
     <div class="custom-box glass-panel" style="max-height:80vh; overflow-y:auto;">
       <h3 style="color:var(--blood-glow); margin-bottom:14px; font-size:18px;">🗳️ 투표 결과 보고서</h3>
@@ -226,6 +231,7 @@
     </div>
   </div>
 
+  <!-- 도감 모달 -->
   <div class="modal-overlay hidden" id="guideModal">
     <div class="custom-box glass-panel" style="max-height:80vh; overflow-y:auto; text-align:left;">
       <h3 style="text-align:center; margin-bottom:14px; color:var(--moon-gold);">📖 직업 도감</h3>
@@ -246,6 +252,7 @@
     </div>
   </div>
 
+  <!-- [8] 미니 골든벨 퀴즈 모달 -->
   <div class="modal-overlay hidden" id="bellModal">
     <div class="glass-panel" style="padding:20px; text-align:center;">
       <h3 style="color:var(--moon-gold); margin-bottom:10px; font-size:20px;">🔔 기습 골든벨 퀴즈</h3>
@@ -264,7 +271,7 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_v4_final_master';
+    const TOKEN_KEY = 'mafia_token_master_final';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
@@ -272,36 +279,101 @@
     let currentChatTab = 'public';
     let hostPendingNextPhase = null, hostPendingSuspect = null;
 
-    let isBgmEnabled = true;
-    function unlockAudio() {
-      let day = document.getElementById('bgmDay'); day.volume = 0.2;
-      let night = document.getElementById('bgmNight'); night.volume = 0.15;
-      let trial = document.getElementById('bgmTrial'); trial.volume = 0.2;
+    // === ★ 모바일 100% 보장 Web Audio API 사운드 엔진 (밤 & 재판 전용) ★ ===
+    let audioCtx, isBgmEnabled = true;
+    let nightOsc1, nightOsc2, nightGain, heartbeatInterval, trialInterval;
+
+    function initWebAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
       
-      [day, night, trial].forEach(el => {
-        el.play().then(() => el.pause()).catch(e => console.log(e));
-      });
+      // 낮 BGM(HTML5) 오디오 권한 획득
+      let day = document.getElementById('bgmDay');
+      day.volume = 0.15; // 낮 음악을 잔잔하게 조절
+      day.play().then(() => day.pause()).catch(e => console.log(e));
+    }
+
+    function stopAllBGM() {
+      let day = document.getElementById('bgmDay');
+      if(day) day.pause();
+      
+      if(nightGain) {
+        nightGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
+        setTimeout(() => {
+          if(nightOsc1) { nightOsc1.stop(); nightOsc1.disconnect(); nightOsc1 = null; }
+          if(nightOsc2) { nightOsc2.stop(); nightOsc2.disconnect(); nightOsc2 = null; }
+        }, 600);
+      }
+      clearInterval(heartbeatInterval);
+      clearInterval(trialInterval);
     }
 
     function playBGM(phase) {
-      let day = document.getElementById('bgmDay');
-      let night = document.getElementById('bgmNight');
-      let trial = document.getElementById('bgmTrial');
-      day.pause(); night.pause(); trial.pause();
+      if (!isBgmEnabled) return;
+      stopAllBGM();
       
-      if(!isBgmEnabled) return;
+      if (!audioCtx) initWebAudio();
       
-      if(phase === 'DAY') day.play().catch(e=>console.log(e));
-      else if(phase === 'NIGHT') night.play().catch(e=>console.log(e));
-      else if(phase === 'TRIAL') trial.play().catch(e=>console.log(e));
+      if (phase === 'DAY') {
+        let day = document.getElementById('bgmDay');
+        day.currentTime = 0; day.play().catch(e=>console.log(e));
+      } else if (phase === 'NIGHT') {
+        // 호러 드론 앰비언트 (기기 자체 생성 - 링크 끊김 방지)
+        nightOsc1 = audioCtx.createOscillator();
+        nightOsc2 = audioCtx.createOscillator();
+        nightGain = audioCtx.createGain();
+        
+        nightOsc1.type = 'sine'; nightOsc1.frequency.value = 50; 
+        nightOsc2.type = 'triangle'; nightOsc2.frequency.value = 52; 
+        
+        nightGain.gain.value = 0;
+        nightGain.gain.setTargetAtTime(0.15, audioCtx.currentTime, 2); 
+        
+        nightOsc1.connect(nightGain); nightOsc2.connect(nightGain);
+        nightGain.connect(audioCtx.destination);
+        nightOsc1.start(); nightOsc2.start();
+
+        // 심장 박동음 (두근.. 두근..)
+        heartbeatInterval = setInterval(() => {
+          if(audioCtx.state !== 'running') return;
+          playHeartbeat(audioCtx.currentTime);
+          playHeartbeat(audioCtx.currentTime + 0.35); 
+        }, 2000);
+      } else if (phase === 'TRIAL') {
+        // 긴장되는 시계 초침 소리 생성
+        trialInterval = setInterval(() => {
+          if(audioCtx.state !== 'running') return;
+          let time = audioCtx.currentTime;
+          let osc = audioCtx.createOscillator();
+          let gain = audioCtx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(1000, time);
+          osc.frequency.exponentialRampToValueAtTime(100, time + 0.05);
+          gain.gain.setValueAtTime(0.1, time);
+          gain.gain.exponentialRampToValueAtTime(0.01, time + 0.05);
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.start(time); osc.stop(time + 0.05);
+        }, 1000);
+      }
     }
-    
+
+    function playHeartbeat(time) {
+      let osc = audioCtx.createOscillator();
+      let gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(55, time);
+      osc.frequency.exponentialRampToValueAtTime(20, time + 0.4);
+      gain.gain.setValueAtTime(0.5, time);
+      gain.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(time); osc.stop(time + 0.4);
+    }
+
     function toggleBGM() {
       isBgmEnabled = !isBgmEnabled;
       document.getElementById('bgmBtn').textContent = isBgmEnabled ? '🔊 BGM 켜짐' : '🔇 BGM 꺼짐';
-      if(!isBgmEnabled) {
-        document.getElementById('bgmDay').pause(); document.getElementById('bgmNight').pause(); document.getElementById('bgmTrial').pause();
-      } else {
+      if(!isBgmEnabled) stopAllBGM();
+      else {
         if(currentPhase.includes('DAY')) playBGM('DAY');
         else if(currentPhase.includes('NIGHT')) playBGM('NIGHT');
         else if(currentPhase.includes('TRIAL')) playBGM('TRIAL');
@@ -310,13 +382,14 @@
 
     function toggleMemo() { document.getElementById('memoModal').classList.toggle('hidden'); }
 
+    // === 게임 로직 ===
     function createRoom() {
-      unlockAudio();
+      initWebAudio();
       myName = document.getElementById('nickInput').value.trim() || '선생님';
       socket.emit('create_room', { hostName: myName, token: myToken });
     }
     function joinRoom() {
-      unlockAudio();
+      initWebAudio();
       myName = document.getElementById('nickInput').value.trim() || '학생';
       let code = document.getElementById('codeInput').value.trim().toUpperCase();
       if(!code) return alert('코드를 입력하세요.');
@@ -574,10 +647,11 @@
       alert(txt);
     });
     
+    // === 개인 메모장 자동 로깅 연동 ===
     socket.on('evidence_received', (txt) => { 
       alert("📜 [비밀 물증 획득]\n" + txt); 
       let time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      document.getElementById('memoContent').value += `\n\n[${time} 📜 물증 획득]\n${txt}`;
+      document.getElementById('memoContent').value += `\n\n[${time} 📜 물증]\n${txt}`;
     });
 
     socket.on('whisper_received', ({ senderName, message }) => {
