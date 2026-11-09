@@ -387,9 +387,7 @@ io.on('connection', (socket) => {
       }
     }
     
-    // 수신자에게 전송
     io.to(target.id).emit('whisper_received', { senderName: `${sender.avatar} ${sender.name}`, message });
-    // 송신자에게 성공 및 기록용 로그 전송 (비밀 수첩 기록용)
     socket.emit('whisper_sent_success', { targetName: `${target.avatar} ${target.name}`, message });
   });
 
@@ -428,7 +426,6 @@ io.on('connection', (socket) => {
       let randP = alive[Math.floor(Math.random() * alive.length)];
       let team = ['mafia','spy','madam'].includes(randP.role) ? '마피아 팀' : '시민 팀';
       
-      // 정답자에게 힌트 전송 (수첩 기록용)
       socket.emit('golden_bell_hint', `[🔔 골든벨 힌트] ${randP.avatar} ${randP.name}님은 [${team}] 소속입니다.`);
     }
   });
