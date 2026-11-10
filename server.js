@@ -142,7 +142,6 @@ function resolveNight(room) {
 
   if (winner) return;
 
-  // [버그 수정] 밤 정산 직후 화면을 강제로 '낮'으로 전환하라는 신호 전송
   io.to(room.code).emit('phase_changed', { phase: 'DAY_TALK' });
 
   room.goldenBellActive = false;
@@ -215,41 +214,51 @@ function startFinalVote(room) {
   startPhaseTimer(room, 20, () => tallyFinalVote(room));
 }
 
+// [수정됨] 최종 투표 정산 시 재판 결과 화면 6초 대기 후 밤으로 전환
 function tallyFinalVote(room) {
   clearRoomTimer(room);
   const suspect = room.players.find(p => p.id === room.suspectId);
+  let resultMsg = "";
   
   if (room.votesFinal.execute > room.votesFinal.spare) {
     if (suspect && suspect.role === 'politician') {
-      io.to(room.code).emit('announcement', `최종 찬성 과반수! 하지만 [${suspect.name}]님은 정치인으로 처형이 면제됩니다!`);
+      resultMsg = `[처형 무산] 과반수 찬성! 하지만 [${suspect.name}]님은 '정치인'으로 처형이 면제됩니다!`;
     } else {
       if (suspect) suspect.isDead = true;
       if (suspect && suspect.role === 'lover') {
         let other = room.players.find(p => p.role === 'lover' && p.id !== suspect.id);
         if(other) other.isDead = true;
       }
-      io.to(room.code).emit('announcement', `최종 투표 결과: [${suspect ? suspect.name : ''}]님이 처형되었습니다.`);
+      resultMsg = `[처형 집행] 투표 결과에 따라 [${suspect ? suspect.name : ''}]님이 처형되었습니다.`;
     }
   } else {
-    io.to(room.code).emit('announcement', `최종 투표 결과: 처형이 무산되었습니다.`);
+    resultMsg = `[처형 무산] 반대표가 많아 처형이 무산되었습니다.`;
   }
+
+  // 1. 전원에게 결과 화면 띄우기
+  room.phase = 'TRIAL_RESULT';
+  io.to(room.code).emit('phase_changed', { phase: 'TRIAL_RESULT', suspectName: resultMsg });
 
   const winner = checkWinCondition(room);
   if (winner) {
-    io.to(room.code).emit('player_list_updated', room.players);
-    io.to(room.code).emit('night_result', { killedNames: [], winner: winner, dayCount: room.dayCount });
+    setTimeout(() => {
+      io.to(room.code).emit('player_list_updated', room.players);
+      io.to(room.code).emit('night_result', { killedNames: [], winner: winner, dayCount: room.dayCount });
+    }, 4000);
     return;
   }
 
   io.to(room.code).emit('player_list_updated', room.players);
-  setTimeout(() => enterNightPhase(room), 3000);
+  // 2. 6초간 결과 보여주고 밤으로 넘어감
+  setTimeout(() => enterNightPhase(room), 6000);
 }
 
 function enterNightPhase(room) {
   room.phase = 'NIGHT';
   room.nightActions = {};
   io.to(room.code).emit('phase_changed', { phase: 'NIGHT' });
-  startPhaseTimer(room, 30, () => resolveNight(room));
+  // [수정됨] 밤 시간 30초 -> 60초 연장
+  startPhaseTimer(room, 60, () => resolveNight(room));
 }
 
 io.on('connection', (socket) => {
@@ -319,13 +328,24 @@ io.on('connection', (socket) => {
       if (currentMafiaTeam < targetMafiaCount) { roles.push('mafia'); currentMafiaTeam++; } 
       else { roles.push('citizen'); }
     }
+    
+    let roleCounts = {};
+    roles.forEach(r => roleCounts[r] = (roleCounts[r] || 0) + 1);
+    const rName = { 'mafia':'마피아', 'spy':'스파이', 'madam':'마담', 'police':'경찰', 'doctor':'의사', 'reporter':'기자', 'politician':'정치인', 'hunter':'사냥꾼', 'medium':'영매', 'lover':'연인', 'citizen':'시민' };
+    
+    let mTeam = ['mafia','spy','madam'].filter(r=>roleCounts[r]).map(r=>`${rName[r]} ${roleCounts[r]}`).join(', ');
+    let cTeam = ['police','doctor','reporter','politician','hunter','medium','lover','citizen'].filter(r=>roleCounts[r]).map(r=>`${rName[r]} ${roleCounts[r]}`).join(', ');
+    let mTotal = ['mafia','spy','madam'].reduce((a,b)=>a+(roleCounts[b]||0), 0);
+    let cTotal = pCount - mTotal;
+
+    let startMsg = `총 ${pCount}명 직업 배정 완료! [🔴마피아 팀 ${mTotal}명 / 🔵시민 팀 ${cTotal}명]\n(상세: ${mTeam} vs ${cTeam})`;
+
     roles.sort(() => Math.random() - 0.5);
 
     room.players.forEach((p, idx) => {
       p.role = roles[idx];
       io.to(p.id).emit('role_assigned', { role: p.role });
       
-      // [버그 수정] 방장이 아닌 해당 플레이어의 소켓을 찾아서 단톡방에 입장시킴
       const targetSocket = io.sockets.sockets.get(p.id);
       if (targetSocket) {
         if (['mafia', 'spy', 'madam'].includes(p.role)) targetSocket.join(roomCode + '_mafia');
@@ -336,6 +356,8 @@ io.on('connection', (socket) => {
     room.phase = 'DAY_TALK';
     io.to(roomCode).emit('player_list_updated', room.players);
     io.to(roomCode).emit('phase_changed', { phase: 'DAY_TALK' });
+    io.to(roomCode).emit('public_chat_received', { sender: '🎮 시스템', text: startMsg, isDead: false });
+
     startPhaseTimer(room, room.talkTime, () => startVote1(room));
   });
 
@@ -354,7 +376,6 @@ io.on('connection', (socket) => {
     }
   });
   
-  // [기능 추가] 용의자 스스로 변론을 종료하는 버튼 처리
   socket.on('skip_defense', ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'TRIAL_DEFENSE') return;
