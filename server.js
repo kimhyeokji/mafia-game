@@ -142,6 +142,9 @@ function resolveNight(room) {
 
   if (winner) return;
 
+  // [버그 수정] 밤 정산 직후 화면을 강제로 '낮'으로 전환하라는 신호 전송
+  io.to(room.code).emit('phase_changed', { phase: 'DAY_TALK' });
+
   room.goldenBellActive = false;
   room.goldenBellTimeout = setTimeout(() => {
     let dots = Math.floor(Math.random() * 5) + 4;
@@ -193,7 +196,7 @@ function tallyVote1(room) {
   if (!topTarget || isTie || maxVote === 0) {
     io.to(room.code).emit('vote_summary_modal', { summaryArr, resultMsg: '동표/무투표로 처형 없이 밤으로 넘어갑니다.' });
     room.phase = 'VOTE_RESULT';
-    io.to(room.code).emit('phase_sync', { nextPhase: 'NIGHT', suspectName: null });
+    io.to(room.code).emit('phase_sync', { nextPhase: 'NIGHT', suspectName: null, suspectId: null });
     return;
   }
 
@@ -202,7 +205,7 @@ function tallyVote1(room) {
   
   io.to(room.code).emit('vote_summary_modal', { summaryArr, resultMsg: `최다 득표자 [${suspect.name}] 해명석으로 이동합니다.` });
   room.phase = 'VOTE_RESULT';
-  io.to(room.code).emit('phase_sync', { nextPhase: 'TRIAL_DEFENSE', suspectName: suspect.name });
+  io.to(room.code).emit('phase_sync', { nextPhase: 'TRIAL_DEFENSE', suspectName: suspect.name, suspectId: suspect.id });
 }
 
 function startFinalVote(room) {
@@ -321,8 +324,13 @@ io.on('connection', (socket) => {
     room.players.forEach((p, idx) => {
       p.role = roles[idx];
       io.to(p.id).emit('role_assigned', { role: p.role });
-      if (['mafia', 'spy', 'madam'].includes(p.role)) socket.join(roomCode + '_mafia');
-      if (p.role === 'lover') socket.join(roomCode + '_lover');
+      
+      // [버그 수정] 방장이 아닌 해당 플레이어의 소켓을 찾아서 단톡방에 입장시킴
+      const targetSocket = io.sockets.sockets.get(p.id);
+      if (targetSocket) {
+        if (['mafia', 'spy', 'madam'].includes(p.role)) targetSocket.join(roomCode + '_mafia');
+        if (p.role === 'lover') targetSocket.join(roomCode + '_lover');
+      }
     });
 
     room.phase = 'DAY_TALK';
@@ -345,13 +353,23 @@ io.on('connection', (socket) => {
       }
     }
   });
+  
+  // [기능 추가] 용의자 스스로 변론을 종료하는 버튼 처리
+  socket.on('skip_defense', ({ roomCode }) => {
+    const room = rooms[roomCode];
+    if (!room || room.phase !== 'TRIAL_DEFENSE') return;
+    if (socket.id === room.suspectId) {
+      clearRoomTimer(room);
+      startFinalVote(room);
+    }
+  });
 
-  socket.on('host_next_phase', ({ roomCode, nextPhase, suspectName }) => {
+  socket.on('host_next_phase', ({ roomCode, nextPhase, suspectName, suspectId }) => {
     const room = rooms[roomCode];
     if (!room || socket.id !== room.hostId) return;
     if (nextPhase === 'TRIAL_DEFENSE') {
       room.phase = 'TRIAL_DEFENSE';
-      io.to(room.code).emit('phase_changed', { phase: 'TRIAL_DEFENSE', suspectName });
+      io.to(room.code).emit('phase_changed', { phase: 'TRIAL_DEFENSE', suspectName, suspectId });
       startPhaseTimer(room, 60, () => startFinalVote(room));
     } else if (nextPhase === 'NIGHT') {
       enterNightPhase(room);
