@@ -59,7 +59,11 @@
     .chat-tabs { display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); }
     .chat-tab { flex: 1; padding: 10px; font-size: 13px; text-align: center; cursor: pointer; color: #888; transition: 0.3s; }
     .chat-tab.active { color: var(--text-white); font-weight: bold; border-bottom: 2px solid var(--blood-red); background: rgba(255,255,255,0.05); }
+    
+    /* [버그 해결] 채팅 로그 컨테이너 분리용 CSS */
     .chat-logs { flex: 1; overflow-y: auto; padding: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+    .chat-logs.hidden { display: none !important; }
+    
     .chat-msg { background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 8px; line-height: 1.4; }
     .chat-input-row { display: flex; padding: 8px; gap: 6px; background: rgba(0,0,0,0.4); border-radius: 0 0 16px 16px; }
     .chat-input-row input { flex: 1; background: rgba(255,255,255,0.1); border: none; color: #fff; padding: 10px; font-size: 13px; border-radius: 8px; outline: none; }
@@ -92,7 +96,6 @@
 
   <div class="app-screen">
     <div style="position: absolute; top: 14px; right: 14px; z-index: 50; display: flex; gap: 8px;">
-      <!-- [1] 완벽 보존된 메모장 버튼 -->
       <button class="glass-panel hidden" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="toggleMemo()" id="memoBtn">📝 수첩</button>
       <button class="glass-panel" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="toggleBGM()" id="bgmBtn">🔊 BGM 켜짐</button>
       <button class="glass-panel" style="padding:8px 12px; color:#fff; border:none; font-weight:bold;" onclick="document.getElementById('guideModal').classList.remove('hidden')">📖 도감</button>
@@ -123,7 +126,6 @@
         <div style="font-size:40px; font-weight:900; color:var(--blood-glow); text-shadow: 0 0 15px rgba(255,71,87,0.5); margin-bottom:10px;" id="dispRoomCode">----</div>
         <div style="font-size:14px; margin-bottom:10px;">참여 인원: <b id="currentCount" style="color:#fff;">0</b>명</div>
         
-        <!-- [2] 동물 아바타 및 번호 리스트 보존 -->
         <div id="lobbyPlayerList" style="display:flex; flex-direction:column; gap:8px; max-height:180px; overflow-y:auto; margin-bottom:16px; text-align:left; border:1px solid rgba(255,255,255,0.1); padding:8px; border-radius:8px; background:rgba(0,0,0,0.3);">
         </div>
 
@@ -149,7 +151,6 @@
     <div id="viewMainGame" class="hidden">
       <div class="player-grid" id="playerGrid"></div>
       
-      <!-- [3] 비밀 귓속말 창 보존 -->
       <div id="whisperSection" class="custom-box glass-panel hidden" style="margin-bottom:16px; padding:12px; max-width:100%;">
         <div style="font-size: 13px; color: #7cb5ec; display: flex; justify-content: space-between; margin-bottom:10px;">
           <span>💬 [<b id="whisperTargetName" style="color:var(--moon-gold)">상대방</b>]에게 은밀히 쪽지 보내기</span>
@@ -164,11 +165,14 @@
       <div class="chat-container glass-panel">
         <div class="chat-tabs">
           <div class="chat-tab active" id="tabPub" onclick="switchChat('public')">전체 채팅</div>
-          <!-- [4] 마피아/연인 핫라인 탭 보존 -->
           <div class="chat-tab hidden" id="tabMaf" onclick="switchChat('mafia')">🔪 핫라인</div>
           <div class="chat-tab hidden" id="tabLov" onclick="switchChat('lover')">💕 연인</div>
         </div>
-        <div class="chat-logs" id="chatLogs"></div>
+        <!-- [버그 해결] 각 그룹별로 완전히 격리된 3개의 채팅 로그 박스 생성 -->
+        <div class="chat-logs active" id="log_public"></div>
+        <div class="chat-logs hidden" id="log_mafia"></div>
+        <div class="chat-logs hidden" id="log_lover"></div>
+        
         <div class="chat-input-row">
           <input type="text" id="chatInput" placeholder="메시지 전송..." onkeydown="if(event.key==='Enter') sendChat()">
           <button class="btn btn-dark" style="width:60px; padding:10px;" onclick="sendChat()">전송</button>
@@ -179,7 +183,6 @@
 
   <div class="action-panel" id="actionPanel"></div>
 
-  <!-- [5] 꾹 눌러보기 기믹 보존 모달 -->
   <div class="modal-overlay hidden" id="roleModal">
     <div class="custom-box glass-panel">
       <div style="font-size: 18px; font-weight: bold; color:var(--moon-gold);">🔒 당신의 비밀 역할</div>
@@ -201,7 +204,6 @@
     </div>
   </div>
 
-  <!-- [6] 개인 수첩 & 로그 자동 기록 보존 모달 -->
   <div class="modal-overlay hidden" id="memoModal">
     <div class="custom-box glass-panel" style="width:90%; height:70%; display:flex; flex-direction:column; padding:16px; margin:auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -213,7 +215,6 @@
     </div>
   </div>
 
-  <!-- [7] 투표 결과창 영구 보존 모달 (방장 통제) -->
   <div class="modal-overlay hidden" id="voteSummaryModal">
     <div class="custom-box glass-panel" style="max-height:80vh; overflow-y:auto;">
       <h3 style="color:var(--blood-glow); margin-bottom:14px; font-size:18px;">🗳️ 투표 결과 보고서</h3>
@@ -231,7 +232,6 @@
     </div>
   </div>
 
-  <!-- 도감 모달 -->
   <div class="modal-overlay hidden" id="guideModal">
     <div class="custom-box glass-panel" style="max-height:80vh; overflow-y:auto; text-align:left;">
       <h3 style="text-align:center; margin-bottom:14px; color:var(--moon-gold);">📖 직업 도감</h3>
@@ -252,7 +252,6 @@
     </div>
   </div>
 
-  <!-- [8] 미니 골든벨 퀴즈 모달 -->
   <div class="modal-overlay hidden" id="bellModal">
     <div class="glass-panel" style="padding:20px; text-align:center;">
       <h3 style="color:var(--moon-gold); margin-bottom:10px; font-size:20px;">🔔 기습 골든벨 퀴즈</h3>
@@ -271,32 +270,29 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_master_final';
+    const TOKEN_KEY = 'mafia_token_master_final_fix';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
     let players = [], selectedTargetId = null, currentPhase = 'LOBBY';
     let currentChatTab = 'public';
-    let hostPendingNextPhase = null, hostPendingSuspect = null;
+    let hostPendingNextPhase = null, hostPendingSuspect = null, hostPendingSuspectId = null;
 
-    // === ★ 모바일 100% 보장 Web Audio API 사운드 엔진 (밤 & 재판 전용) ★ ===
+    // === ★ 모바일 100% 보장 Web Audio API 엔진 (밤 호러 앰비언트 / 재판 초침 생성) ★ ===
     let audioCtx, isBgmEnabled = true;
     let nightOsc1, nightOsc2, nightGain, heartbeatInterval, trialInterval;
 
     function initWebAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
-      
-      // 낮 BGM(HTML5) 오디오 권한 획득
       let day = document.getElementById('bgmDay');
-      day.volume = 0.15; // 낮 음악을 잔잔하게 조절
+      day.volume = 0.15;
       day.play().then(() => day.pause()).catch(e => console.log(e));
     }
 
     function stopAllBGM() {
       let day = document.getElementById('bgmDay');
       if(day) day.pause();
-      
       if(nightGain) {
         nightGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
         setTimeout(() => {
@@ -311,36 +307,25 @@
     function playBGM(phase) {
       if (!isBgmEnabled) return;
       stopAllBGM();
-      
       if (!audioCtx) initWebAudio();
       
       if (phase === 'DAY') {
         let day = document.getElementById('bgmDay');
         day.currentTime = 0; day.play().catch(e=>console.log(e));
       } else if (phase === 'NIGHT') {
-        // 호러 드론 앰비언트 (기기 자체 생성 - 링크 끊김 방지)
-        nightOsc1 = audioCtx.createOscillator();
-        nightOsc2 = audioCtx.createOscillator();
-        nightGain = audioCtx.createGain();
-        
+        nightOsc1 = audioCtx.createOscillator(); nightOsc2 = audioCtx.createOscillator(); nightGain = audioCtx.createGain();
         nightOsc1.type = 'sine'; nightOsc1.frequency.value = 50; 
         nightOsc2.type = 'triangle'; nightOsc2.frequency.value = 52; 
-        
-        nightGain.gain.value = 0;
-        nightGain.gain.setTargetAtTime(0.15, audioCtx.currentTime, 2); 
-        
-        nightOsc1.connect(nightGain); nightOsc2.connect(nightGain);
-        nightGain.connect(audioCtx.destination);
+        nightGain.gain.value = 0; nightGain.gain.setTargetAtTime(0.15, audioCtx.currentTime, 2); 
+        nightOsc1.connect(nightGain); nightOsc2.connect(nightGain); nightGain.connect(audioCtx.destination);
         nightOsc1.start(); nightOsc2.start();
 
-        // 심장 박동음 (두근.. 두근..)
         heartbeatInterval = setInterval(() => {
           if(audioCtx.state !== 'running') return;
           playHeartbeat(audioCtx.currentTime);
           playHeartbeat(audioCtx.currentTime + 0.35); 
         }, 2000);
       } else if (phase === 'TRIAL') {
-        // 긴장되는 시계 초침 소리 생성
         trialInterval = setInterval(() => {
           if(audioCtx.state !== 'running') return;
           let time = audioCtx.currentTime;
@@ -358,13 +343,9 @@
     }
 
     function playHeartbeat(time) {
-      let osc = audioCtx.createOscillator();
-      let gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(55, time);
-      osc.frequency.exponentialRampToValueAtTime(20, time + 0.4);
-      gain.gain.setValueAtTime(0.5, time);
-      gain.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
+      let osc = audioCtx.createOscillator(); let gain = audioCtx.createGain();
+      osc.type = 'sine'; osc.frequency.setValueAtTime(55, time); osc.frequency.exponentialRampToValueAtTime(20, time + 0.4);
+      gain.gain.setValueAtTime(0.5, time); gain.gain.exponentialRampToValueAtTime(0.01, time + 0.4);
       osc.connect(gain); gain.connect(audioCtx.destination);
       osc.start(time); osc.stop(time + 0.4);
     }
@@ -491,17 +472,18 @@
       document.getElementById('timerBox').textContent = `${m}:${s}`;
     });
 
-    socket.on('phase_sync', ({ nextPhase, suspectName }) => {
+    socket.on('phase_sync', ({ nextPhase, suspectName, suspectId }) => {
       hostPendingNextPhase = nextPhase;
       hostPendingSuspect = suspectName;
+      hostPendingSuspectId = suspectId;
     });
 
-    socket.on('phase_changed', ({ phase, suspectName }) => { 
+    socket.on('phase_changed', ({ phase, suspectName, suspectId }) => { 
       document.getElementById('voteSummaryModal').classList.add('hidden');
-      handlePhaseChange(phase, suspectName); 
+      handlePhaseChange(phase, suspectName, suspectId); 
     });
 
-    function handlePhaseChange(phase, suspectName) {
+    function handlePhaseChange(phase, suspectName, suspectId) {
       currentPhase = phase; selectedTargetId = null;
       let title = document.getElementById('phaseTitle'), sub = document.getElementById('phaseSubtitle');
       let act = document.getElementById('actionPanel');
@@ -519,9 +501,17 @@
         title.textContent = "🗳️ 1차 지목 투표"; sub.textContent = "의심되는 카드를 선택 후 투표하세요.";
         act.innerHTML = !isDead ? `<button class="btn btn-blood" onclick="submitNight('cast_vote1')">투표 제출</button>` : '';
       } else if (phase === 'VOTE_RESULT') {
+        // 투표 모달 대기
       } else if (phase === 'TRIAL_DEFENSE') {
         playBGM('TRIAL'); document.body.classList.add('phase-trial');
-        title.textContent = `⚠️ 최후의 변론: ${suspectName}`; sub.textContent = "용의자 해명 시간"; act.innerHTML = '';
+        title.textContent = `⚠️ 최후의 변론: ${suspectName}`; sub.textContent = "용의자 해명 시간";
+        act.innerHTML = '';
+        
+        // [버그 수정] 본인이 용의자인 경우에만 화면에 [변론 조기 종료] 버튼 생성
+        let me = players.find(p => p.token === myToken);
+        if (me && me.id === suspectId) {
+          act.innerHTML = `<button class="btn btn-dark" onclick="socket.emit('skip_defense', {roomCode: myRoomCode})">변론 완료 (바로 투표로 넘어가기)</button>`;
+        }
       } else if (phase === 'TRIAL_FINAL') {
         document.body.classList.add('phase-trial');
         title.textContent = "⚖️ 찬반 투표"; sub.textContent = "처형하시겠습니까?";
@@ -626,7 +616,7 @@
     });
 
     function proceedHostNextPhase() {
-      socket.emit('host_next_phase', { roomCode: myRoomCode, nextPhase: hostPendingNextPhase, suspectName: hostPendingSuspect });
+      socket.emit('host_next_phase', { roomCode: myRoomCode, nextPhase: hostPendingNextPhase, suspectName: hostPendingSuspect, suspectId: hostPendingSuspectId });
     }
 
     function submitNight(evt) {
@@ -647,11 +637,10 @@
       alert(txt);
     });
     
-    // === 개인 메모장 자동 로깅 연동 ===
     socket.on('evidence_received', (txt) => { 
       alert("📜 [비밀 물증 획득]\n" + txt); 
       let time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      document.getElementById('memoContent').value += `\n\n[${time} 📜 물증]\n${txt}`;
+      document.getElementById('memoContent').value += `\n\n[${time} 📜 물증 획득]\n${txt}`;
     });
 
     socket.on('whisper_received', ({ senderName, message }) => {
@@ -675,23 +664,32 @@
     socket.on('system_msg', (msg) => { alert("💡 " + msg); });
     socket.on('error_msg', (msg) => { alert("❌ " + msg); });
 
+    // [버그 수정] 채팅 탭과 로그 분리 로직 완전 정상화
     function switchChat(tab) {
       currentChatTab = tab;
       document.querySelectorAll('.chat-tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.chat-logs').forEach(l=>l.classList.add('hidden'));
+      
       let id = tab==='public'?'tabPub':tab==='mafia'?'tabMaf':'tabLov';
+      let logId = tab==='public'?'log_public':tab==='mafia'?'log_mafia':'log_lover';
+      
       document.getElementById(id).classList.add('active');
+      document.getElementById(logId).classList.remove('hidden');
     }
+
     function sendChat() {
       let val = document.getElementById('chatInput').value.trim(); if(!val) return;
       if(currentChatTab==='public') socket.emit('public_chat', { roomCode: myRoomCode, msg: val, senderName: myName });
       else socket.emit('group_chat', { roomCode: myRoomCode, group: currentChatTab, msg: val, senderName: myName });
       document.getElementById('chatInput').value = '';
     }
-    socket.on('public_chat_received', (d) => appendChat(d.sender, d.text, d.isDead ? 'gray' : 'white'));
-    socket.on('group_chat_received', (d) => appendChat(d.sender, d.text, d.group==='mafia'?'var(--blood-glow)':'pink'));
     
-    function appendChat(sender, text, color) {
-      let box = document.getElementById('chatLogs');
+    socket.on('public_chat_received', (d) => appendChat('public', d.sender, d.text, d.isDead ? 'gray' : 'white'));
+    socket.on('group_chat_received', (d) => appendChat(d.group, d.sender, d.text, d.group==='mafia'?'var(--blood-glow)':'pink'));
+    
+    function appendChat(targetTab, sender, text, color) {
+      let logId = targetTab==='public' ? 'log_public' : (targetTab==='mafia' ? 'log_mafia' : 'log_lover');
+      let box = document.getElementById(logId);
       box.innerHTML += `<div class="chat-msg" style="color:${color}"><b>${sender}</b>: ${text}</div>`;
       box.scrollTop = box.scrollHeight;
     }
