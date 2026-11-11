@@ -12,6 +12,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
 const AVATARS = ['🐶','🐱','🦊','🐻','🐰','🐼','🦁','🐯','🐸','🐵','🦄','🦉','🐙','🦖','👽'];
+const rName = { 'mafia':'마피아', 'spy':'스파이', 'madam':'마담', 'police':'경찰', 'doctor':'의사', 'reporter':'기자', 'politician':'정치인', 'hunter':'사냥꾼', 'medium':'영매', 'lover':'연인', 'citizen':'시민' };
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -87,7 +88,7 @@ function resolveNight(room) {
     clearRoomTimer(room);
     let actions = room.nightActions;
     let deadThisNight = new Set();
-    let blockedPlayers = new Set(); // 토큰으로 저장
+    let blockedPlayers = new Set(); 
 
     if (actions.madam) blockedPlayers.add(actions.madam.targetToken);
 
@@ -98,17 +99,12 @@ function resolveNight(room) {
       if(actor) io.to(actor.id).emit('system_msg', `🔍 조사 결과: [${target ? target.name : '알수없음'}]님은 [${isMafia ? '마피아' : '시민 팀(마피아 아님)'}] 입니다.`);
     }
     
-    if (actions.medium && !blockedPlayers.has(actions.medium.actorToken)) {
-      let target = room.players.find(p => p.token === actions.medium.targetToken);
-      let actor = room.players.find(p => p.token === actions.medium.actorToken);
-      if(actor) io.to(actor.id).emit('system_msg', `🔮 영매 교감: 죽은 [${target ? target.name : '알수없음'}]님의 직업은 [${target ? target.role : '알수없음'}] 입니다.`);
-    }
-
     if (actions.reporter && !blockedPlayers.has(actions.reporter.actorToken) && !room.reporterUsed) {
       let target = room.players.find(p => p.token === actions.reporter.targetToken);
       if (target) {
         room.reporterUsed = true;
-        room.morningNews = `📰 [아침 특종] 기자의 취재 결과, [${target.name}]님의 직업은 [${target.role}]로 밝혀졌습니다!`;
+        let translatedRole = rName[target.role] || target.role;
+        room.morningNews = `📰 [아침 특종] 기자의 취재 결과, [${target.name}]님의 직업은 [${translatedRole}]로 밝혀졌습니다!`;
       }
     } else { room.morningNews = null; }
 
@@ -130,7 +126,12 @@ function resolveNight(room) {
     let killedNames = [];
     deadThisNight.forEach(tkn => {
       let p = room.players.find(p => p.token === tkn);
-      if (p && !p.isDead) { p.isDead = true; killedNames.push(p.name); }
+      if (p && !p.isDead) { 
+        p.isDead = true; 
+        // [추가] 사망자의 소속 팀 확인
+        let team = ['mafia','spy','madam'].includes(p.role) ? '마피아 팀' : '시민 팀';
+        killedNames.push(`${p.name}(${team})`); 
+      }
     });
 
     let evidence = generateEvidence(room);
@@ -161,7 +162,7 @@ function resolveNight(room) {
     startPhaseTimer(room, room.talkTime, () => startVote1(room));
 
   } catch (error) {
-    console.error("resolveNight 중 치명적 에러 발생 방어:", error);
+    console.error("resolveNight 에러 방어:", error);
   }
 }
 
@@ -204,7 +205,7 @@ function tallyVote1(room) {
       if(target) summaryArr.push({ targetName: target.name, targetAvatar: target.avatar, voters: votersOf[tkn] });
     }
 
-    room.voteResultData = { summaryArr, resultMsg: '' }; // 재접속 복구용 임시 저장
+    room.voteResultData = { summaryArr, resultMsg: '' }; 
 
     if (!topTargetToken || isTie || maxVote === 0) {
       room.voteResultData.resultMsg = '동표/무투표로 처형 없이 밤으로 넘어갑니다.';
@@ -224,7 +225,7 @@ function tallyVote1(room) {
     io.to(room.code).emit('phase_sync', { nextPhase: 'TRIAL_DEFENSE', suspectName: suspect.name, suspectToken: suspect.token });
 
   } catch (error) {
-    console.error("tallyVote1 멈춤 에러 방어:", error);
+    console.error("tallyVote1 에러 방어:", error);
   }
 }
 
@@ -245,12 +246,21 @@ function tallyFinalVote(room) {
       if (suspect && suspect.role === 'politician') {
         resultMsg = `[처형 무산] 과반수 찬성! 하지만 [${suspect.name}]님은 '정치인'으로 처형이 면제됩니다!`;
       } else {
-        if (suspect) suspect.isDead = true;
+        if (suspect) {
+          suspect.isDead = true;
+          // [추가] 처형자 진영 확인
+          let sTeam = ['mafia','spy','madam'].includes(suspect.role) ? '마피아 팀' : '시민 팀';
+          resultMsg = `[처형 집행] 투표 결과에 따라 [${suspect.name}]님이 처형되었습니다.\n(정체: ${sTeam})`;
+        }
+        
         if (suspect && suspect.role === 'lover') {
           let other = room.players.find(p => p.role === 'lover' && p.token !== suspect.token);
-          if(other) other.isDead = true;
+          if(other) {
+            other.isDead = true;
+            let oTeam = ['mafia','spy','madam'].includes(other.role) ? '마피아 팀' : '시민 팀';
+            resultMsg += `\n\n[연인 동반 사망] [${other.name}]님도 충격으로 함께 사망했습니다. (정체: ${oTeam})`;
+          }
         }
-        resultMsg = `[처형 집행] 투표 결과에 따라 [${suspect ? suspect.name : '알수없음'}]님이 처형되었습니다.`;
       }
     } else {
       resultMsg = `[처형 무산] 반대표가 많아 처형이 무산되었습니다.`;
@@ -272,7 +282,7 @@ function tallyFinalVote(room) {
     setTimeout(() => enterNightPhase(room), 6000);
 
   } catch (error) {
-    console.error("tallyFinalVote 멈춤 에러 방어:", error);
+    console.error("tallyFinalVote 에러 방어:", error);
     enterNightPhase(room);
   }
 }
@@ -326,7 +336,6 @@ io.on('connection', (socket) => {
         remainingTime: room.remainingTime
       });
       
-      // 투표 결과창 켜져있을 때 재접속 시 팝업 띄워주기
       if (room.phase === 'VOTE_RESULT' && room.voteResultData) {
         socket.emit('vote_summary_modal', room.voteResultData);
       }
@@ -377,7 +386,6 @@ io.on('connection', (socket) => {
     
     let roleCounts = {};
     roles.forEach(r => roleCounts[r] = (roleCounts[r] || 0) + 1);
-    const rName = { 'mafia':'마피아', 'spy':'스파이', 'madam':'마담', 'police':'경찰', 'doctor':'의사', 'reporter':'기자', 'politician':'정치인', 'hunter':'사냥꾼', 'medium':'영매', 'lover':'연인', 'citizen':'시민' };
     
     let mTeam = ['mafia','spy','madam'].filter(r=>roleCounts[r]).map(r=>`${rName[r]} ${roleCounts[r]}`).join(', ');
     let cTeam = ['police','doctor','reporter','politician','hunter','medium','lover','citizen'].filter(r=>roleCounts[r]).map(r=>`${rName[r]} ${roleCounts[r]}`).join(', ');
@@ -471,7 +479,6 @@ io.on('connection', (socket) => {
       }
     }
     
-    // 대상의 현재 소켓 ID로 발송 (재접속 튕김 방어)
     io.to(target.id).emit('whisper_received', { senderName: `${sender.avatar} ${sender.name}`, message });
     socket.emit('whisper_sent_success', { targetName: `${target.avatar} ${target.name}`, message });
   });
@@ -527,4 +534,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('마피아 100% 무중단 서버 가동 완료: 포트 ' + PORT));
+server.listen(PORT, () => console.log('마피아 마스터 서버 가동 완료: 포트 ' + PORT));
