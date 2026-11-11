@@ -55,7 +55,6 @@
 
     .custom-box { padding: 24px; width: 100%; max-width: 360px; margin: 0 auto; text-align: center; }
     
-    /* [수정됨] 채팅창 높이 고정으로 스크롤 넘침 방지 */
     .chat-container { height: 220px; flex-shrink: 0; display: flex; flex-direction: column; margin-top: 10px; }
     .chat-tabs { display: flex; border-bottom: 1px solid rgba(255,255,255,0.1); }
     .chat-tab { flex: 1; padding: 10px; font-size: 13px; text-align: center; cursor: pointer; color: #888; transition: 0.3s; }
@@ -87,7 +86,6 @@
 </head>
 <body>
   
-  <!-- 낮(추리) BGM -->
   <audio id="bgmDay" loop src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"></audio>
 
   <div class="marquee-container hidden" id="marqueeBox">
@@ -130,7 +128,16 @@
         </div>
 
         <div id="hostOptions" class="hidden" style="text-align:left; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
-          <div style="color:var(--moon-gold); margin-bottom:10px; font-weight:bold; font-size:13px;">특수 직업 추가 (인원에 맞춰 자동 배분)</div>
+          
+          <!-- [기능 추가] 방장 전용 마피아 인원 커스텀 설정 -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; background:rgba(0,0,0,0.4); padding:10px; border-radius:8px;">
+            <span style="font-size:13px; font-weight:bold;">🩸 전체 마피아 팀 배정 수:</span>
+            <div>
+              <input type="number" id="mafiaCountSetting" value="2" min="1" max="5" style="width:40px; background:rgba(255,255,255,0.1); color:var(--blood-glow); border:1px solid rgba(255,255,255,0.3); border-radius:4px; text-align:center; font-weight:bold;"> 명
+            </div>
+          </div>
+
+          <div style="color:var(--moon-gold); margin-bottom:10px; font-weight:bold; font-size:13px;">특수 직업 포함 (체크)</div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:13px;">
             <label><input type="checkbox" class="role-cb" value="police" checked disabled> 🔍 경찰(시)</label>
             <label><input type="checkbox" class="role-cb" value="doctor" checked disabled> 💉 의사(시)</label>
@@ -269,7 +276,7 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_master_final_fix_v3';
+    const TOKEN_KEY = 'mafia_token_master_reconnect_fix';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
@@ -302,7 +309,6 @@
       clearInterval(trialInterval);
     }
 
-    // [추가됨] 시체 발견 비명 소리 (날카로운 신디사이저 강하음)
     function playScream() {
       if (!audioCtx || !isBgmEnabled) return;
       let osc1 = audioCtx.createOscillator();
@@ -384,7 +390,6 @@
 
     function toggleMemo() { document.getElementById('memoModal').classList.toggle('hidden'); }
 
-    // === 게임 로직 ===
     function createRoom() {
       initWebAudio();
       myName = document.getElementById('nickInput').value.trim() || '선생님';
@@ -410,13 +415,19 @@
       if(isHost) document.getElementById('hostOptions').classList.remove('hidden');
     }
 
+    // [버그 수정 1] 재접속 시 동기화 완벽 보장 (순서 재배치)
     socket.on('reconnect_success', (data) => {
       myRoomCode = data.roomCode; myRole = data.role; isDead = data.isDead; isHost = data.isHost;
       localStorage.setItem(TOKEN_KEY, myToken);
       document.getElementById('viewLobby').classList.add('hidden');
       setupRoleTabs();
       document.getElementById('memoBtn').classList.remove('hidden');
-      handlePhaseChange(data.phase, null, null);
+      
+      // 화면 렌더링에 필요한 players 배열을 phase_changed 전에 덮어씌움
+      players = data.players;
+      renderGameGrid();
+      
+      handlePhaseChange(data.phase, data.suspectName, data.suspectId);
     });
 
     socket.on('player_list_updated', (pList) => {
@@ -429,9 +440,10 @@
       if (lobbyList) {
         lobbyList.innerHTML = '';
         players.forEach(p => {
+          let offlineMark = p.isOffline ? '<span style="color:#ff4757; font-size:11px;"> 🔌오프라인</span>' : '';
           lobbyList.innerHTML += `
             <div style="padding:10px; background:rgba(255,255,255,0.1); border-radius:8px; font-size:14px; display:flex; justify-content:space-between; align-items:center;">
-              <span><span style="font-size:18px;">${p.avatar}</span> <span class="num-badge">#${p.playerNum}</span> ${p.name}</span>
+              <span><span style="font-size:18px;">${p.avatar}</span> <span class="num-badge">#${p.playerNum}</span> ${p.name} ${offlineMark}</span>
               <span style="color:#aaa; font-size:11px;">${p.isHost ? '👑 방장' : '참가자'}</span>
             </div>`;
         });
@@ -442,7 +454,9 @@
     function startGame() {
       let cbs = document.querySelectorAll('.role-cb:checked');
       let selected = Array.from(cbs).map(cb => cb.value);
-      socket.emit('start_game', { roomCode: myRoomCode, selectedRoles: selected });
+      // [기능 추가] 방장의 수동 설정 마피아 카운트 넘기기
+      let mCount = parseInt(document.getElementById('mafiaCountSetting').value) || 1;
+      socket.emit('start_game', { roomCode: myRoomCode, selectedRoles: selected, mafiaCount: mCount });
     }
 
     socket.on('role_assigned', ({ role }) => {
@@ -522,8 +536,8 @@
         title.textContent = "🗳️ 1차 지목 투표"; sub.textContent = "의심되는 카드를 선택 후 투표하세요.";
         act.innerHTML = !isDead ? `<button class="btn btn-blood" onclick="submitNight('cast_vote1')">투표 제출</button>` : '';
       } else if (phase === 'VOTE_RESULT') {
+        // 투표 모달 대기
       } else if (phase === 'TRIAL_RESULT') {
-        // [수정됨] 재판 결과 확인 화면 (6초 유지)
         title.textContent = "⚖️ 재판 결과"; sub.textContent = "최종 처형 투표 결과입니다.";
         act.innerHTML = `<div style="text-align:center; color:var(--moon-gold); font-size:16px; font-weight:bold; padding:20px;">${suspectName}</div>`;
       } else if (phase === 'TRIAL_DEFENSE') {
@@ -569,11 +583,14 @@
         let alignment = '';
         if (isDead && !p.isDead) alignment = ['mafia','spy','madam'].includes(p.role) ? '🔴' : '🔵';
         
+        // [추가됨] 오프라인(튕김) 표시 아이콘
+        let offlineMark = p.isOffline ? '<span style="font-size:11px; color:#ff4757;"> 🔌오프라인</span>' : '';
+
         card.innerHTML = `
           <div style="display:flex; align-items:center; gap:8px;">
             <div style="font-size:26px;">${p.isDead ? '💀' : p.avatar}</div>
             <div>
-              <div style="font-size:14px; font-weight:bold;"><span class="num-badge">#${p.playerNum}</span>${p.name} ${alignment}</div>
+              <div style="font-size:14px; font-weight:bold;"><span class="num-badge">#${p.playerNum}</span>${p.name} ${alignment} ${offlineMark}</div>
             </div>
           </div>
           <div class="voter-badges" id="badges_${p.id}"></div>
@@ -609,8 +626,8 @@
 
     socket.on('vote_update', (votesObj) => {
       document.querySelectorAll('.voter-badges').forEach(b => b.innerHTML = '');
-      for(let [voterId, tId] of Object.entries(votesObj)){
-        let voter = players.find(p=>p.id===voterId);
+      for(let [voterToken, tId] of Object.entries(votesObj)){
+        let voter = players.find(p=>p.token===voterToken); // 토큰 기반으로 뱃지 렌더링
         let badgeBox = document.getElementById('badges_'+tId);
         if(badgeBox && voter) badgeBox.innerHTML += `<span class="badge">${voter.avatar} ${voter.name}</span>`;
       }
@@ -655,10 +672,7 @@
     socket.on('night_result', (data) => {
       if(data.winner) { alert(`🏆 게임 종료! [${data.winner}] 승리! 모든 직업이 공개됩니다.`); location.reload(); return; }
       
-      // [추가됨] 시체 발견 시 비명 소리 재생
-      if(data.killedNames.length > 0) {
-        playScream();
-      }
+      if(data.killedNames.length > 0) playScream();
       
       let txt = `☀️ 아침이 밝았습니다.\n\n`;
       txt += data.killedNames.length > 0 ? `🩸 간밤의 희생자: ${data.killedNames.join(', ')}` : `🕊️ 간밤에 사망자가 발생하지 않았습니다.`;
