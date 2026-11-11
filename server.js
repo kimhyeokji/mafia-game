@@ -35,7 +35,10 @@ function startPhaseTimer(room, durationSec, onEndCallback) {
     io.to(room.code).emit('timer_tick', { remainingTime: room.remainingTime });
     if (room.remainingTime <= 0) {
       clearRoomTimer(room);
-      if (onEndCallback) onEndCallback();
+      if (onEndCallback) {
+        try { onEndCallback(); } 
+        catch (e) { console.error("타이머 콜백 에러 방어:", e); }
+      }
     }
   }, 1000);
 }
@@ -60,7 +63,7 @@ function generateEvidence(room) {
 
   if (alive.length >= 3 && realMafias.length > 0) {
     let m = realMafias[Math.floor(Math.random() * realMafias.length)];
-    let others = alive.filter(p => p.id !== m.id).sort(() => 0.5 - Math.random()).slice(0, 2);
+    let others = alive.filter(p => p.token !== m.token).sort(() => 0.5 - Math.random()).slice(0, 2);
     let suspects = [m, ...others].sort(() => 0.5 - Math.random()).map(p => `#${p.playerNum} ${p.name}`);
     evidenceTypes.push(`[수사 기록] 용의선상에 오른 3명(${suspects.join(', ')}) 중 최소 1명 이상은 마피아 팀입니다.`);
   }
@@ -76,83 +79,90 @@ function generateEvidence(room) {
 
   let chosenEvidence = evidenceTypes[Math.floor(Math.random() * evidenceTypes.length)] || "특이 단서를 찾지 못했습니다.";
   let receiver = alive[Math.floor(Math.random() * alive.length)];
-  return { receiverId: receiver.id, text: chosenEvidence };
+  return { receiverToken: receiver.token, receiverId: receiver.id, text: chosenEvidence };
 }
 
 function resolveNight(room) {
-  clearRoomTimer(room);
-  let actions = room.nightActions;
-  let deadThisNight = new Set();
-  let blockedPlayers = new Set();
+  try {
+    clearRoomTimer(room);
+    let actions = room.nightActions;
+    let deadThisNight = new Set();
+    let blockedPlayers = new Set(); // 토큰으로 저장
 
-  if (actions.madam) blockedPlayers.add(actions.madam.target);
+    if (actions.madam) blockedPlayers.add(actions.madam.targetToken);
 
-  if (actions.police && !blockedPlayers.has(actions.police.actor)) {
-    let target = room.players.find(p => p.id === actions.police.target);
-    let isMafia = target && target.role === 'mafia' ? true : false; 
-    io.to(actions.police.actor).emit('system_msg', `🔍 조사 결과: [${target.name}]님은 [${isMafia ? '마피아' : '시민 팀(마피아 아님)'}] 입니다.`);
-  }
-  
-  if (actions.medium && !blockedPlayers.has(actions.medium.actor)) {
-    let target = room.players.find(p => p.id === actions.medium.target);
-    io.to(actions.medium.actor).emit('system_msg', `🔮 영매 교감: 죽은 [${target.name}]님의 직업은 [${target.role}] 입니다.`);
-  }
-
-  if (actions.reporter && !blockedPlayers.has(actions.reporter.actor) && !room.reporterUsed) {
-    let target = room.players.find(p => p.id === actions.reporter.target);
-    if (target) {
-      room.reporterUsed = true;
-      room.morningNews = `📰 [아침 특종] 기자의 취재 결과, [${target.name}]님의 직업은 [${target.role}]로 밝혀졌습니다!`;
+    if (actions.police && !blockedPlayers.has(actions.police.actorToken)) {
+      let target = room.players.find(p => p.token === actions.police.targetToken);
+      let isMafia = target && target.role === 'mafia' ? true : false; 
+      let actor = room.players.find(p => p.token === actions.police.actorToken);
+      if(actor) io.to(actor.id).emit('system_msg', `🔍 조사 결과: [${target ? target.name : '알수없음'}]님은 [${isMafia ? '마피아' : '시민 팀(마피아 아님)'}] 입니다.`);
     }
-  } else { room.morningNews = null; }
+    
+    if (actions.medium && !blockedPlayers.has(actions.medium.actorToken)) {
+      let target = room.players.find(p => p.token === actions.medium.targetToken);
+      let actor = room.players.find(p => p.token === actions.medium.actorToken);
+      if(actor) io.to(actor.id).emit('system_msg', `🔮 영매 교감: 죽은 [${target ? target.name : '알수없음'}]님의 직업은 [${target ? target.role : '알수없음'}] 입니다.`);
+    }
 
-  let mafiaTarget = actions.mafia ? actions.mafia.target : null;
-  let docTarget = actions.doctor && !blockedPlayers.has(actions.doctor.actor) ? actions.doctor.target : null;
-  
-  if (mafiaTarget && mafiaTarget !== docTarget) deadThisNight.add(mafiaTarget);
+    if (actions.reporter && !blockedPlayers.has(actions.reporter.actorToken) && !room.reporterUsed) {
+      let target = room.players.find(p => p.token === actions.reporter.targetToken);
+      if (target) {
+        room.reporterUsed = true;
+        room.morningNews = `📰 [아침 특종] 기자의 취재 결과, [${target.name}]님의 직업은 [${target.role}]로 밝혀졌습니다!`;
+      }
+    } else { room.morningNews = null; }
 
-  if (actions.hunter && !blockedPlayers.has(actions.hunter.actor)) {
-    if (deadThisNight.has(actions.hunter.actor)) deadThisNight.add(actions.hunter.target);
+    let mafiaTargetToken = actions.mafia ? actions.mafia.targetToken : null;
+    let docTargetToken = actions.doctor && !blockedPlayers.has(actions.doctor.actorToken) ? actions.doctor.targetToken : null;
+    
+    if (mafiaTargetToken && mafiaTargetToken !== docTargetToken) deadThisNight.add(mafiaTargetToken);
+
+    if (actions.hunter && !blockedPlayers.has(actions.hunter.actorToken)) {
+      if (deadThisNight.has(actions.hunter.actorToken)) deadThisNight.add(actions.hunter.targetToken);
+    }
+
+    let lovers = room.players.filter(p => p.role === 'lover');
+    if (lovers.length === 2) {
+      if (deadThisNight.has(lovers[0].token)) deadThisNight.add(lovers[1].token);
+      if (deadThisNight.has(lovers[1].token)) deadThisNight.add(lovers[0].token);
+    }
+
+    let killedNames = [];
+    deadThisNight.forEach(tkn => {
+      let p = room.players.find(p => p.token === tkn);
+      if (p && !p.isDead) { p.isDead = true; killedNames.push(p.name); }
+    });
+
+    let evidence = generateEvidence(room);
+    if (evidence && evidence.receiverId) io.to(evidence.receiverId).emit('evidence_received', evidence.text);
+
+    const winner = checkWinCondition(room);
+
+    room.phase = 'DAY_TALK';
+    room.dayCount++;
+    room.players.forEach(p => { p.whisperedToday = []; p.skipVote = false; });
+    room.skipVotesCount = 0;
+
+    io.to(room.code).emit('player_list_updated', room.players);
+    io.to(room.code).emit('night_result', { killedNames, winner, dayCount: room.dayCount, news: room.morningNews });
+
+    if (winner) return;
+
+    io.to(room.code).emit('phase_changed', { phase: 'DAY_TALK' });
+
+    room.goldenBellActive = false;
+    room.goldenBellTimeout = setTimeout(() => {
+      let dots = Math.floor(Math.random() * 5) + 4;
+      room.goldenBellActive = true;
+      room.goldenBellAnswer = dots;
+      io.to(room.code).emit('golden_bell_start', { dots });
+    }, 30000);
+
+    startPhaseTimer(room, room.talkTime, () => startVote1(room));
+
+  } catch (error) {
+    console.error("resolveNight 중 치명적 에러 발생 방어:", error);
   }
-
-  let lovers = room.players.filter(p => p.role === 'lover');
-  if (lovers.length === 2) {
-    if (deadThisNight.has(lovers[0].id)) deadThisNight.add(lovers[1].id);
-    if (deadThisNight.has(lovers[1].id)) deadThisNight.add(lovers[0].id);
-  }
-
-  let killedNames = [];
-  deadThisNight.forEach(id => {
-    let p = room.players.find(p => p.id === id);
-    if (p && !p.isDead) { p.isDead = true; killedNames.push(p.name); }
-  });
-
-  let evidence = generateEvidence(room);
-  if (evidence) io.to(evidence.receiverId).emit('evidence_received', evidence.text);
-
-  const winner = checkWinCondition(room);
-
-  room.phase = 'DAY_TALK';
-  room.dayCount++;
-  room.players.forEach(p => { p.whisperedToday = []; p.skipVote = false; });
-  room.skipVotesCount = 0;
-
-  io.to(room.code).emit('player_list_updated', room.players);
-  io.to(room.code).emit('night_result', { killedNames, winner, dayCount: room.dayCount, news: room.morningNews });
-
-  if (winner) return;
-
-  io.to(room.code).emit('phase_changed', { phase: 'DAY_TALK' });
-
-  room.goldenBellActive = false;
-  room.goldenBellTimeout = setTimeout(() => {
-    let dots = Math.floor(Math.random() * 5) + 4;
-    room.goldenBellActive = true;
-    room.goldenBellAnswer = dots;
-    io.to(room.code).emit('golden_bell_start', { dots });
-  }, 30000);
-
-  startPhaseTimer(room, room.talkTime, () => startVote1(room));
 }
 
 function startVote1(room) {
@@ -166,46 +176,56 @@ function startVote1(room) {
 }
 
 function tallyVote1(room) {
-  clearRoomTimer(room);
-  const counts = {};
-  const votersOf = {}; 
+  try {
+    clearRoomTimer(room);
+    const counts = {};
+    const votersOf = {}; 
 
-  for (const [voterToken, targetId] of Object.entries(room.votes1)) {
-    let voter = room.players.find(p => p.token === voterToken);
-    let target = room.players.find(p => p.id === targetId);
-    if(!voter || !target) continue;
-    let weight = (voter.role === 'politician') ? 2 : 1;
+    for (const [voterToken, targetToken] of Object.entries(room.votes1)) {
+      let voter = room.players.find(p => p.token === voterToken);
+      let target = room.players.find(p => p.token === targetToken);
+      if(!voter || !target) continue;
+      let weight = (voter.role === 'politician') ? 2 : 1;
+      
+      counts[targetToken] = (counts[targetToken] || 0) + weight;
+      if(!votersOf[targetToken]) votersOf[targetToken] = [];
+      votersOf[targetToken].push(`${voter.name}${weight>1?"(2표)":""}`);
+    }
+
+    let maxVote = 0, topTargetToken = null, isTie = false;
+    for (const [tkn, cnt] of Object.entries(counts)) {
+      if (cnt > maxVote) { maxVote = cnt; topTargetToken = tkn; isTie = false; } 
+      else if (cnt === maxVote && maxVote > 0) { isTie = true; }
+    }
+
+    const summaryArr = [];
+    for(let tkn in votersOf){
+      let target = room.players.find(p=>p.token===tkn);
+      if(target) summaryArr.push({ targetName: target.name, targetAvatar: target.avatar, voters: votersOf[tkn] });
+    }
+
+    room.voteResultData = { summaryArr, resultMsg: '' }; // 재접속 복구용 임시 저장
+
+    if (!topTargetToken || isTie || maxVote === 0) {
+      room.voteResultData.resultMsg = '동표/무투표로 처형 없이 밤으로 넘어갑니다.';
+      io.to(room.code).emit('vote_summary_modal', room.voteResultData);
+      room.phase = 'VOTE_RESULT';
+      io.to(room.code).emit('phase_sync', { nextPhase: 'NIGHT', suspectName: null, suspectToken: null });
+      return;
+    }
+
+    const suspect = room.players.find(p => p.token === topTargetToken);
+    room.suspectToken = topTargetToken;
+    room.suspectName = suspect.name;
     
-    counts[targetId] = (counts[targetId] || 0) + weight;
-    if(!votersOf[targetId]) votersOf[targetId] = [];
-    votersOf[targetId].push(`${voter.name}${weight>1?"(2표)":""}`);
-  }
-
-  let maxVote = 0, topTarget = null, isTie = false;
-  for (const [tid, cnt] of Object.entries(counts)) {
-    if (cnt > maxVote) { maxVote = cnt; topTarget = tid; isTie = false; } 
-    else if (cnt === maxVote && maxVote > 0) { isTie = true; }
-  }
-
-  const summaryArr = [];
-  for(let tId in votersOf){
-    let target = room.players.find(p=>p.id===tId);
-    if(target) summaryArr.push({ targetName: target.name, targetAvatar: target.avatar, voters: votersOf[tId] });
-  }
-
-  if (!topTarget || isTie || maxVote === 0) {
-    io.to(room.code).emit('vote_summary_modal', { summaryArr, resultMsg: '동표/무투표로 처형 없이 밤으로 넘어갑니다.' });
+    room.voteResultData.resultMsg = `최다 득표자 [${suspect.name}] 해명석으로 이동합니다.`;
+    io.to(room.code).emit('vote_summary_modal', room.voteResultData);
     room.phase = 'VOTE_RESULT';
-    io.to(room.code).emit('phase_sync', { nextPhase: 'NIGHT', suspectName: null, suspectId: null });
-    return;
-  }
+    io.to(room.code).emit('phase_sync', { nextPhase: 'TRIAL_DEFENSE', suspectName: suspect.name, suspectToken: suspect.token });
 
-  const suspect = room.players.find(p => p.id === topTarget);
-  room.suspectId = topTarget;
-  
-  io.to(room.code).emit('vote_summary_modal', { summaryArr, resultMsg: `최다 득표자 [${suspect.name}] 해명석으로 이동합니다.` });
-  room.phase = 'VOTE_RESULT';
-  io.to(room.code).emit('phase_sync', { nextPhase: 'TRIAL_DEFENSE', suspectName: suspect.name, suspectId: suspect.id });
+  } catch (error) {
+    console.error("tallyVote1 멈춤 에러 방어:", error);
+  }
 }
 
 function startFinalVote(room) {
@@ -216,39 +236,45 @@ function startFinalVote(room) {
 }
 
 function tallyFinalVote(room) {
-  clearRoomTimer(room);
-  const suspect = room.players.find(p => p.id === room.suspectId);
-  let resultMsg = "";
-  
-  if (room.votesFinal.execute > room.votesFinal.spare) {
-    if (suspect && suspect.role === 'politician') {
-      resultMsg = `[처형 무산] 과반수 찬성! 하지만 [${suspect.name}]님은 '정치인'으로 처형이 면제됩니다!`;
-    } else {
-      if (suspect) suspect.isDead = true;
-      if (suspect && suspect.role === 'lover') {
-        let other = room.players.find(p => p.role === 'lover' && p.id !== suspect.id);
-        if(other) other.isDead = true;
+  try {
+    clearRoomTimer(room);
+    const suspect = room.players.find(p => p.token === room.suspectToken);
+    let resultMsg = "";
+    
+    if (room.votesFinal.execute > room.votesFinal.spare) {
+      if (suspect && suspect.role === 'politician') {
+        resultMsg = `[처형 무산] 과반수 찬성! 하지만 [${suspect.name}]님은 '정치인'으로 처형이 면제됩니다!`;
+      } else {
+        if (suspect) suspect.isDead = true;
+        if (suspect && suspect.role === 'lover') {
+          let other = room.players.find(p => p.role === 'lover' && p.token !== suspect.token);
+          if(other) other.isDead = true;
+        }
+        resultMsg = `[처형 집행] 투표 결과에 따라 [${suspect ? suspect.name : '알수없음'}]님이 처형되었습니다.`;
       }
-      resultMsg = `[처형 집행] 투표 결과에 따라 [${suspect ? suspect.name : ''}]님이 처형되었습니다.`;
+    } else {
+      resultMsg = `[처형 무산] 반대표가 많아 처형이 무산되었습니다.`;
     }
-  } else {
-    resultMsg = `[처형 무산] 반대표가 많아 처형이 무산되었습니다.`;
+
+    room.phase = 'TRIAL_RESULT';
+    io.to(room.code).emit('phase_changed', { phase: 'TRIAL_RESULT', suspectName: resultMsg });
+
+    const winner = checkWinCondition(room);
+    if (winner) {
+      setTimeout(() => {
+        io.to(room.code).emit('player_list_updated', room.players);
+        io.to(room.code).emit('night_result', { killedNames: [], winner: winner, dayCount: room.dayCount });
+      }, 4000);
+      return;
+    }
+
+    io.to(room.code).emit('player_list_updated', room.players);
+    setTimeout(() => enterNightPhase(room), 6000);
+
+  } catch (error) {
+    console.error("tallyFinalVote 멈춤 에러 방어:", error);
+    enterNightPhase(room);
   }
-
-  room.phase = 'TRIAL_RESULT';
-  io.to(room.code).emit('phase_changed', { phase: 'TRIAL_RESULT', suspectName: resultMsg });
-
-  const winner = checkWinCondition(room);
-  if (winner) {
-    setTimeout(() => {
-      io.to(room.code).emit('player_list_updated', room.players);
-      io.to(room.code).emit('night_result', { killedNames: [], winner: winner, dayCount: room.dayCount });
-    }, 4000);
-    return;
-  }
-
-  io.to(room.code).emit('player_list_updated', room.players);
-  setTimeout(() => enterNightPhase(room), 6000);
 }
 
 function enterNightPhase(room) {
@@ -260,7 +286,6 @@ function enterNightPhase(room) {
 
 io.on('connection', (socket) => {
   
-  // [버그 수정 2] 튕김 감지 및 오프라인 처리
   socket.on('disconnect', () => {
     for (const roomCode in rooms) {
       const room = rooms[roomCode];
@@ -288,17 +313,24 @@ io.on('connection', (socket) => {
     let existingPlayer = room.players.find(p => p.token === token);
     if (existingPlayer) {
       existingPlayer.id = socket.id;
-      existingPlayer.isOffline = false; // 오프라인 해제
+      existingPlayer.isOffline = false;
       socket.join(roomCode);
       if (['mafia','spy','madam'].includes(existingPlayer.role)) socket.join(roomCode + '_mafia');
       if (existingPlayer.role === 'lover') socket.join(roomCode + '_lover');
+      if (existingPlayer.isHost) room.hostId = socket.id;
       
-      // [버그 수정 1] 재접속 시 전체 정보를 한 번에 보내 완벽한 렌더링 보장
       socket.emit('reconnect_success', { 
         roomCode, role: existingPlayer.role, phase: room.phase, 
         isDead: existingPlayer.isDead, isHost: existingPlayer.isHost,
-        players: room.players, suspectName: room.suspectName, suspectId: room.suspectId
+        players: room.players, suspectName: room.suspectName, suspectToken: room.suspectToken,
+        remainingTime: room.remainingTime
       });
+      
+      // 투표 결과창 켜져있을 때 재접속 시 팝업 띄워주기
+      if (room.phase === 'VOTE_RESULT' && room.voteResultData) {
+        socket.emit('vote_summary_modal', room.voteResultData);
+      }
+      
       io.to(roomCode).emit('player_list_updated', room.players);
       return;
     }
@@ -336,8 +368,6 @@ io.on('connection', (socket) => {
     let pCount = room.players.length;
     let roles = [...selectedRoles];
     let currentMafiaTeam = roles.filter(r => ['mafia','spy','madam'].includes(r)).length;
-    
-    // [기능 추가] 방장이 수동 설정한 마피아 인원수 적용
     let targetMafiaCount = Math.max(1, mafiaCount || Math.floor(pCount / 4));
     
     while(roles.length < pCount) {
@@ -395,18 +425,18 @@ io.on('connection', (socket) => {
   socket.on('skip_defense', ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'TRIAL_DEFENSE') return;
-    if (socket.id === room.suspectId) {
+    if (room.suspectToken && room.players.find(p => p.id === socket.id && p.token === room.suspectToken)) {
       clearRoomTimer(room);
       startFinalVote(room);
     }
   });
 
-  socket.on('host_next_phase', ({ roomCode, nextPhase, suspectName, suspectId }) => {
+  socket.on('host_next_phase', ({ roomCode, nextPhase, suspectName, suspectToken }) => {
     const room = rooms[roomCode];
     if (!room || socket.id !== room.hostId) return;
     if (nextPhase === 'TRIAL_DEFENSE') {
       room.phase = 'TRIAL_DEFENSE';
-      io.to(room.code).emit('phase_changed', { phase: 'TRIAL_DEFENSE', suspectName, suspectId });
+      io.to(room.code).emit('phase_changed', { phase: 'TRIAL_DEFENSE', suspectName, suspectToken });
       startPhaseTimer(room, 60, () => startFinalVote(room));
     } else if (nextPhase === 'NIGHT') {
       enterNightPhase(room);
@@ -426,36 +456,35 @@ io.on('connection', (socket) => {
     io.to(roomCode + '_' + group).emit('group_chat_received', { sender: `${p.avatar} ${senderName}`, text: msg, group });
   });
 
-  socket.on('send_whisper', ({ roomCode, targetId, message }) => {
+  socket.on('send_whisper', ({ roomCode, targetToken, message }) => {
     const room = rooms[roomCode]; if (!room) return;
     const sender = room.players.find(p => p.id === socket.id);
-    const target = room.players.find(p => p.id === targetId);
+    const target = room.players.find(p => p.token === targetToken);
     if (!sender || sender.isDead || !target || target.isDead) return;
     
     let isLoverPair = sender.role === 'lover' && target.role === 'lover';
     if (!isLoverPair) {
       sender.whisperedToday = sender.whisperedToday || [];
-      if (!sender.whisperedToday.includes(targetId)) {
+      if (!sender.whisperedToday.includes(targetToken)) {
         if (sender.whisperedToday.length >= 2) return socket.emit('error_msg', '귓속말은 하루 2명까지만 가능합니다.');
-        sender.whisperedToday.push(targetId);
+        sender.whisperedToday.push(targetToken);
       }
     }
     
+    // 대상의 현재 소켓 ID로 발송 (재접속 튕김 방어)
     io.to(target.id).emit('whisper_received', { senderName: `${sender.avatar} ${sender.name}`, message });
     socket.emit('whisper_sent_success', { targetName: `${target.avatar} ${target.name}`, message });
   });
 
-  // [버그 수정 2] 투표 고유 토큰 사용 처리
-  socket.on('cast_vote1', ({ roomCode, targetId }) => {
+  socket.on('cast_vote1', ({ roomCode, targetToken }) => {
     const room = rooms[roomCode]; if (!room || room.phase !== 'DAY_VOTE1') return;
     const me = room.players.find(p => p.id === socket.id);
     if(!me) return;
     
-    room.votes1[me.token] = targetId; // 소켓 아이디 대신 토큰 사용
+    room.votes1[me.token] = targetToken; 
     
     io.to(roomCode).emit('vote_update', room.votes1);
     
-    // 오프라인 상태인 플레이어는 투표 대기 인원에서 제외 (프리징 방지)
     const aliveAndOnlineCount = room.players.filter(p => !p.isDead && !p.isOffline).length;
     if (Object.keys(room.votes1).length >= aliveAndOnlineCount) tallyVote1(room);
   });
@@ -473,12 +502,13 @@ io.on('connection', (socket) => {
     if (room.votesFinal.votedTokens.length >= aliveAndOnlineCount) tallyFinalVote(room);
   });
 
-  socket.on('night_action', ({ roomCode, actionType, targetId }) => {
+  socket.on('night_action', ({ roomCode, actionType, targetToken }) => {
     const room = rooms[roomCode]; if (!room || room.phase !== 'NIGHT') return;
-    room.nightActions[actionType] = { actor: socket.id, target: targetId };
+    const me = room.players.find(p => p.id === socket.id);
+    room.nightActions[actionType] = { actorToken: me.token, targetToken: targetToken };
     if (actionType === 'mafia') {
-      let target = room.players.find(p => p.id === targetId);
-      io.to(roomCode + '_mafia').emit('system_msg', `🔪 타깃 지목 완료: [${target ? target.name : ''}]`);
+      let target = room.players.find(p => p.token === targetToken);
+      io.to(roomCode + '_mafia').emit('system_msg', `🔪 타깃 지목 완료: [${target ? target.name : '알수없음'}]`);
     }
   });
 
@@ -497,4 +527,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('마피아 마스터 서버 가동 완료: 포트 ' + PORT));
+server.listen(PORT, () => console.log('마피아 100% 무중단 서버 가동 완료: 포트 ' + PORT));
