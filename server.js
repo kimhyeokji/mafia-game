@@ -170,10 +170,11 @@ function tallyVote1(room) {
   const counts = {};
   const votersOf = {}; 
 
-  for (const [voterId, targetId] of Object.entries(room.votes1)) {
-    let voter = room.players.find(p => p.id === voterId);
+  for (const [voterToken, targetId] of Object.entries(room.votes1)) {
+    let voter = room.players.find(p => p.token === voterToken);
     let target = room.players.find(p => p.id === targetId);
-    let weight = (voter && voter.role === 'politician') ? 2 : 1;
+    if(!voter || !target) continue;
+    let weight = (voter.role === 'politician') ? 2 : 1;
     
     counts[targetId] = (counts[targetId] || 0) + weight;
     if(!votersOf[targetId]) votersOf[targetId] = [];
@@ -209,12 +210,11 @@ function tallyVote1(room) {
 
 function startFinalVote(room) {
   room.phase = 'TRIAL_FINAL';
-  room.votesFinal = { execute: 0, spare: 0, votedSockets: [] };
+  room.votesFinal = { execute: 0, spare: 0, votedTokens: [] };
   io.to(room.code).emit('phase_changed', { phase: 'TRIAL_FINAL' });
   startPhaseTimer(room, 20, () => tallyFinalVote(room));
 }
 
-// [수정됨] 최종 투표 정산 시 재판 결과 화면 6초 대기 후 밤으로 전환
 function tallyFinalVote(room) {
   clearRoomTimer(room);
   const suspect = room.players.find(p => p.id === room.suspectId);
@@ -235,7 +235,6 @@ function tallyFinalVote(room) {
     resultMsg = `[처형 무산] 반대표가 많아 처형이 무산되었습니다.`;
   }
 
-  // 1. 전원에게 결과 화면 띄우기
   room.phase = 'TRIAL_RESULT';
   io.to(room.code).emit('phase_changed', { phase: 'TRIAL_RESULT', suspectName: resultMsg });
 
@@ -249,7 +248,6 @@ function tallyFinalVote(room) {
   }
 
   io.to(room.code).emit('player_list_updated', room.players);
-  // 2. 6초간 결과 보여주고 밤으로 넘어감
   setTimeout(() => enterNightPhase(room), 6000);
 }
 
@@ -257,17 +255,30 @@ function enterNightPhase(room) {
   room.phase = 'NIGHT';
   room.nightActions = {};
   io.to(room.code).emit('phase_changed', { phase: 'NIGHT' });
-  // [수정됨] 밤 시간 30초 -> 60초 연장
   startPhaseTimer(room, 60, () => resolveNight(room));
 }
 
 io.on('connection', (socket) => {
+  
+  // [버그 수정 2] 튕김 감지 및 오프라인 처리
+  socket.on('disconnect', () => {
+    for (const roomCode in rooms) {
+      const room = rooms[roomCode];
+      const player = room.players.find(p => p.id === socket.id);
+      if (player) {
+        player.isOffline = true;
+        io.to(roomCode).emit('player_list_updated', room.players);
+        break;
+      }
+    }
+  });
+
   const joinOrReconnect = (roomCode, playerName, token, isHostRequest) => {
     let room = rooms[roomCode];
     if (!room && isHostRequest) {
       room = rooms[roomCode] = {
         code: roomCode, hostId: null, phase: 'LOBBY', dayCount: 1, players: [],
-        votes1: {}, votesFinal: { execute: 0, spare: 0, votedSockets: [] },
+        votes1: {}, votesFinal: { execute: 0, spare: 0, votedTokens: [] },
         nightActions: {}, timerInterval: null, remainingTime: 0,
         talkTime: 180, skipVotesCount: 0, reporterUsed: false
       };
@@ -277,13 +288,16 @@ io.on('connection', (socket) => {
     let existingPlayer = room.players.find(p => p.token === token);
     if (existingPlayer) {
       existingPlayer.id = socket.id;
+      existingPlayer.isOffline = false; // 오프라인 해제
       socket.join(roomCode);
       if (['mafia','spy','madam'].includes(existingPlayer.role)) socket.join(roomCode + '_mafia');
       if (existingPlayer.role === 'lover') socket.join(roomCode + '_lover');
       
+      // [버그 수정 1] 재접속 시 전체 정보를 한 번에 보내 완벽한 렌더링 보장
       socket.emit('reconnect_success', { 
         roomCode, role: existingPlayer.role, phase: room.phase, 
-        isDead: existingPlayer.isDead, isHost: existingPlayer.isHost 
+        isDead: existingPlayer.isDead, isHost: existingPlayer.isHost,
+        players: room.players, suspectName: room.suspectName, suspectId: room.suspectId
       });
       io.to(roomCode).emit('player_list_updated', room.players);
       return;
@@ -297,7 +311,7 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     room.players.push({
       id: socket.id, name: playerName, token: newToken, role: null, 
-      isDead: false, isHost: isHost, whisperedToday: [], skipVote: false,
+      isDead: false, isOffline: false, isHost: isHost, whisperedToday: [], skipVote: false,
       playerNum: room.players.length + 1,
       avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)]
     });
@@ -315,14 +329,16 @@ io.on('connection', (socket) => {
 
   socket.on('join_room', ({ roomCode, playerName, token }) => joinOrReconnect(roomCode, playerName, token, false));
 
-  socket.on('start_game', ({ roomCode, selectedRoles }) => {
+  socket.on('start_game', ({ roomCode, selectedRoles, mafiaCount }) => {
     const room = rooms[roomCode];
     if (!room || socket.id !== room.hostId) return;
 
     let pCount = room.players.length;
     let roles = [...selectedRoles];
     let currentMafiaTeam = roles.filter(r => ['mafia','spy','madam'].includes(r)).length;
-    let targetMafiaCount = Math.max(1, Math.floor(pCount / 4));
+    
+    // [기능 추가] 방장이 수동 설정한 마피아 인원수 적용
+    let targetMafiaCount = Math.max(1, mafiaCount || Math.floor(pCount / 4));
     
     while(roles.length < pCount) {
       if (currentMafiaTeam < targetMafiaCount) { roles.push('mafia'); currentMafiaTeam++; } 
@@ -429,21 +445,32 @@ io.on('connection', (socket) => {
     socket.emit('whisper_sent_success', { targetName: `${target.avatar} ${target.name}`, message });
   });
 
+  // [버그 수정 2] 투표 고유 토큰 사용 처리
   socket.on('cast_vote1', ({ roomCode, targetId }) => {
     const room = rooms[roomCode]; if (!room || room.phase !== 'DAY_VOTE1') return;
-    room.votes1[socket.id] = targetId;
+    const me = room.players.find(p => p.id === socket.id);
+    if(!me) return;
+    
+    room.votes1[me.token] = targetId; // 소켓 아이디 대신 토큰 사용
+    
     io.to(roomCode).emit('vote_update', room.votes1);
-    const aliveCount = room.players.filter(p => !p.isDead).length;
-    if (Object.keys(room.votes1).length >= aliveCount) tallyVote1(room);
+    
+    // 오프라인 상태인 플레이어는 투표 대기 인원에서 제외 (프리징 방지)
+    const aliveAndOnlineCount = room.players.filter(p => !p.isDead && !p.isOffline).length;
+    if (Object.keys(room.votes1).length >= aliveAndOnlineCount) tallyVote1(room);
   });
 
   socket.on('cast_vote_final', ({ roomCode, isExecute }) => {
     const room = rooms[roomCode]; if (!room || room.phase !== 'TRIAL_FINAL') return;
-    if (room.votesFinal.votedSockets.includes(socket.id)) return;
-    room.votesFinal.votedSockets.push(socket.id);
+    const me = room.players.find(p => p.id === socket.id);
+    if(!me) return;
+
+    if (room.votesFinal.votedTokens.includes(me.token)) return;
+    room.votesFinal.votedTokens.push(me.token);
     if (isExecute) room.votesFinal.execute++; else room.votesFinal.spare++;
-    const aliveCount = room.players.filter(p => !p.isDead).length;
-    if (room.votesFinal.votedSockets.length >= aliveCount) tallyFinalVote(room);
+    
+    const aliveAndOnlineCount = room.players.filter(p => !p.isDead && !p.isOffline).length;
+    if (room.votesFinal.votedTokens.length >= aliveAndOnlineCount) tallyFinalVote(room);
   });
 
   socket.on('night_action', ({ roomCode, actionType, targetId }) => {
