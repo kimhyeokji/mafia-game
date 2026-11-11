@@ -35,7 +35,7 @@
     .marquee-content { white-space: nowrap; animation: marquee 15s linear infinite; text-shadow: 0 0 5px var(--moon-gold); }
     @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
-    .app-screen { flex: 1; display: flex; flex-direction: column; padding: 14px 14px 90px 14px; position: relative; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .app-screen { flex: 1; display: flex; flex-direction: column; padding: 14px 14px 160px 14px; position: relative; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     
     .status-panel { padding: 16px; text-align: center; margin-bottom: 16px; }
     .phase-badge { font-size: 14px; font-weight: 900; color: var(--blood-glow); text-shadow: 0 0 10px var(--blood-glow); }
@@ -275,13 +275,27 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_master_reconnect_perfect';
+    const TOKEN_KEY = 'mafia_token_master_final_teamreveal';
     let myToken = localStorage.getItem(TOKEN_KEY);
+    
+    let wakeLock = null;
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) { console.log('Wake Lock 에러:', err); }
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (wakeLock !== null && document.visibilityState === 'visible') { requestWakeLock(); }
+    });
     
     let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
     let players = [], selectedTargetToken = null, currentPhase = 'LOBBY';
     let currentChatTab = 'public';
     let hostPendingNextPhase = null, hostPendingSuspect = null, hostPendingSuspectToken = null;
+
+    const rNameKr = { 'mafia':'마피아', 'spy':'스파이', 'madam':'마담', 'police':'경찰', 'doctor':'의사', 'reporter':'기자', 'politician':'정치인', 'hunter':'사냥꾼', 'medium':'영매', 'lover':'연인', 'citizen':'시민' };
 
     let audioCtx, isBgmEnabled = true;
     let nightOsc1, nightOsc2, nightGain, heartbeatInterval, trialInterval;
@@ -390,12 +404,12 @@
     function toggleMemo() { document.getElementById('memoModal').classList.toggle('hidden'); }
 
     function createRoom() {
-      initWebAudio();
+      initWebAudio(); requestWakeLock();
       myName = document.getElementById('nickInput').value.trim() || '선생님';
       socket.emit('create_room', { hostName: myName, token: myToken });
     }
     function joinRoom() {
-      initWebAudio();
+      initWebAudio(); requestWakeLock();
       myName = document.getElementById('nickInput').value.trim() || '학생';
       let code = document.getElementById('codeInput').value.trim().toUpperCase();
       if(!code) return alert('코드를 입력하세요.');
@@ -414,15 +428,17 @@
       if(isHost) document.getElementById('hostOptions').classList.remove('hidden');
     }
 
-    // [버그 수정] 재접속 동기화 퍼펙트 처리
     socket.on('reconnect_success', (data) => {
       myRoomCode = data.roomCode; myRole = data.role; isDead = data.isDead; isHost = data.isHost;
       localStorage.setItem(TOKEN_KEY, myToken);
       document.getElementById('viewLobby').classList.add('hidden');
+      document.getElementById('viewWaitingRoom').classList.add('hidden');
+      
+      document.getElementById('viewMainGame').classList.remove('hidden');
+      
       setupRoleTabs();
       document.getElementById('memoBtn').classList.remove('hidden');
       
-      // 재접속 시 시간 및 플레이어 리스트 완벽 동기화
       players = data.players;
       renderGameGrid();
       
@@ -543,7 +559,8 @@
         // 투표 모달 대기
       } else if (phase === 'TRIAL_RESULT') {
         title.textContent = "⚖️ 재판 결과"; sub.textContent = "최종 처형 투표 결과입니다.";
-        act.innerHTML = `<div style="text-align:center; color:var(--moon-gold); font-size:16px; font-weight:bold; padding:20px;">${suspectName}</div>`;
+        // [수정] 처형 결과 문자열 그대로 출력 (진영 포함됨)
+        act.innerHTML = `<div style="text-align:center; color:var(--moon-gold); font-size:15px; font-weight:bold; padding:20px; white-space:pre-wrap;">${suspectName}</div>`;
       } else if (phase === 'TRIAL_DEFENSE') {
         playBGM('TRIAL'); document.body.classList.add('phase-trial');
         title.textContent = `⚠️ 최후의 변론: ${suspectName}`; sub.textContent = "용의자 해명 시간";
@@ -569,7 +586,6 @@
           if(myRole==='doctor'){btnText="보호 대상 확정"; btnClass="btn-green";}
           if(myRole==='reporter'){btnText="특종 취재 확정"; btnClass="btn-dark";}
           if(myRole==='hunter'){btnText="길동무 조준 확정"; btnClass="btn-blood";}
-          if(myRole==='medium'){btnText="영매 교감 확정(무덤)"; btnClass="btn-dark";}
           act.innerHTML = `<button class="btn ${btnClass}" onclick="submitNight('night_action')">${btnText}</button>`;
         }
       }
@@ -580,7 +596,6 @@
       let grid = document.getElementById('playerGrid'); grid.innerHTML = '';
       players.forEach(p => {
         let card = document.createElement('div');
-        // 토큰 기반으로 선택 상태 확인
         let isSel = p.token === selectedTargetToken ? 'selected' : '';
         let isD = p.isDead ? 'dead' : '';
         card.className = `player-card ${isD} ${isSel}`;
@@ -588,6 +603,11 @@
         let alignment = '';
         if (isDead && !p.isDead) alignment = ['mafia','spy','madam'].includes(p.role) ? '🔴' : '🔵';
         
+        let deadRoleStr = '';
+        if (p.isDead && myRole === 'medium') {
+           deadRoleStr = `<br><span style="color:var(--moon-gold); font-size:11px;">[사망 당시 직업: ${rNameKr[p.role] || p.role}]</span>`;
+        }
+
         let offlineMark = p.isOffline ? '<span style="font-size:11px; color:#ff4757;"> 🔌오프라인</span>' : '';
 
         card.innerHTML = `
@@ -595,6 +615,7 @@
             <div style="font-size:26px;">${p.isDead ? '💀' : p.avatar}</div>
             <div>
               <div style="font-size:14px; font-weight:bold;"><span class="num-badge">#${p.playerNum}</span>${p.name} ${alignment} ${offlineMark}</div>
+              ${deadRoleStr}
             </div>
           </div>
           <div class="voter-badges" id="badges_${p.token}"></div>
@@ -678,6 +699,7 @@
       
       if(data.killedNames.length > 0) playScream();
       
+      // [수정] 배열 안의 요소들이 이미 "이름(진영)" 포맷이므로 깔끔하게 조인됩니다.
       let txt = `☀️ 아침이 밝았습니다.\n\n`;
       txt += data.killedNames.length > 0 ? `🩸 간밤의 희생자: ${data.killedNames.join(', ')}` : `🕊️ 간밤에 사망자가 발생하지 않았습니다.`;
       if(data.news) txt += `\n\n${data.news}`;
