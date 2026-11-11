@@ -129,11 +129,10 @@
 
         <div id="hostOptions" class="hidden" style="text-align:left; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
           
-          <!-- [기능 추가] 방장 전용 마피아 인원 커스텀 설정 -->
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; background:rgba(0,0,0,0.4); padding:10px; border-radius:8px;">
-            <span style="font-size:13px; font-weight:bold;">🩸 전체 마피아 팀 배정 수:</span>
+            <span style="font-size:13px; font-weight:bold;">🩸 마피아 팀 배정 수:</span>
             <div>
-              <input type="number" id="mafiaCountSetting" value="2" min="1" max="5" style="width:40px; background:rgba(255,255,255,0.1); color:var(--blood-glow); border:1px solid rgba(255,255,255,0.3); border-radius:4px; text-align:center; font-weight:bold;"> 명
+              <input type="number" id="mafiaCountSetting" value="1" min="1" max="5" style="width:40px; background:rgba(255,255,255,0.1); color:var(--blood-glow); border:1px solid rgba(255,255,255,0.3); border-radius:4px; text-align:center; font-weight:bold;"> 명
             </div>
           </div>
 
@@ -276,13 +275,13 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_master_reconnect_fix';
+    const TOKEN_KEY = 'mafia_token_master_reconnect_perfect';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
-    let players = [], selectedTargetId = null, currentPhase = 'LOBBY';
+    let players = [], selectedTargetToken = null, currentPhase = 'LOBBY';
     let currentChatTab = 'public';
-    let hostPendingNextPhase = null, hostPendingSuspect = null, hostPendingSuspectId = null;
+    let hostPendingNextPhase = null, hostPendingSuspect = null, hostPendingSuspectToken = null;
 
     let audioCtx, isBgmEnabled = true;
     let nightOsc1, nightOsc2, nightGain, heartbeatInterval, trialInterval;
@@ -415,7 +414,7 @@
       if(isHost) document.getElementById('hostOptions').classList.remove('hidden');
     }
 
-    // [버그 수정 1] 재접속 시 동기화 완벽 보장 (순서 재배치)
+    // [버그 수정] 재접속 동기화 퍼펙트 처리
     socket.on('reconnect_success', (data) => {
       myRoomCode = data.roomCode; myRole = data.role; isDead = data.isDead; isHost = data.isHost;
       localStorage.setItem(TOKEN_KEY, myToken);
@@ -423,11 +422,17 @@
       setupRoleTabs();
       document.getElementById('memoBtn').classList.remove('hidden');
       
-      // 화면 렌더링에 필요한 players 배열을 phase_changed 전에 덮어씌움
+      // 재접속 시 시간 및 플레이어 리스트 완벽 동기화
       players = data.players;
       renderGameGrid();
       
-      handlePhaseChange(data.phase, data.suspectName, data.suspectId);
+      if (data.remainingTime) {
+        let m = String(Math.floor(data.remainingTime/60)).padStart(2,'0');
+        let s = String(data.remainingTime%60).padStart(2,'0');
+        document.getElementById('timerBox').textContent = `${m}:${s}`;
+      }
+      
+      handlePhaseChange(data.phase, data.suspectName, data.suspectToken);
     });
 
     socket.on('player_list_updated', (pList) => {
@@ -454,7 +459,6 @@
     function startGame() {
       let cbs = document.querySelectorAll('.role-cb:checked');
       let selected = Array.from(cbs).map(cb => cb.value);
-      // [기능 추가] 방장의 수동 설정 마피아 카운트 넘기기
       let mCount = parseInt(document.getElementById('mafiaCountSetting').value) || 1;
       socket.emit('start_game', { roomCode: myRoomCode, selectedRoles: selected, mafiaCount: mCount });
     }
@@ -507,19 +511,19 @@
       document.getElementById('timerBox').textContent = `${m}:${s}`;
     });
 
-    socket.on('phase_sync', ({ nextPhase, suspectName, suspectId }) => {
+    socket.on('phase_sync', ({ nextPhase, suspectName, suspectToken }) => {
       hostPendingNextPhase = nextPhase;
       hostPendingSuspect = suspectName;
-      hostPendingSuspectId = suspectId;
+      hostPendingSuspectToken = suspectToken;
     });
 
-    socket.on('phase_changed', ({ phase, suspectName, suspectId }) => { 
+    socket.on('phase_changed', ({ phase, suspectName, suspectToken }) => { 
       document.getElementById('voteSummaryModal').classList.add('hidden');
-      handlePhaseChange(phase, suspectName, suspectId); 
+      handlePhaseChange(phase, suspectName, suspectToken); 
     });
 
-    function handlePhaseChange(phase, suspectName, suspectId) {
-      currentPhase = phase; selectedTargetId = null;
+    function handlePhaseChange(phase, suspectName, suspectToken) {
+      currentPhase = phase; selectedTargetToken = null;
       let title = document.getElementById('phaseTitle'), sub = document.getElementById('phaseSubtitle');
       let act = document.getElementById('actionPanel');
       document.body.className = '';
@@ -546,7 +550,7 @@
         act.innerHTML = '';
         
         let me = players.find(p => p.token === myToken);
-        if (me && me.id === suspectId) {
+        if (me && me.token === suspectToken) {
           act.innerHTML = `<button class="btn btn-dark" onclick="socket.emit('skip_defense', {roomCode: myRoomCode})">변론 완료 (바로 투표로 넘어가기)</button>`;
         }
       } else if (phase === 'TRIAL_FINAL') {
@@ -576,14 +580,14 @@
       let grid = document.getElementById('playerGrid'); grid.innerHTML = '';
       players.forEach(p => {
         let card = document.createElement('div');
-        let isSel = p.id === selectedTargetId ? 'selected' : '';
+        // 토큰 기반으로 선택 상태 확인
+        let isSel = p.token === selectedTargetToken ? 'selected' : '';
         let isD = p.isDead ? 'dead' : '';
         card.className = `player-card ${isD} ${isSel}`;
         
         let alignment = '';
         if (isDead && !p.isDead) alignment = ['mafia','spy','madam'].includes(p.role) ? '🔴' : '🔵';
         
-        // [추가됨] 오프라인(튕김) 표시 아이콘
         let offlineMark = p.isOffline ? '<span style="font-size:11px; color:#ff4757;"> 🔌오프라인</span>' : '';
 
         card.innerHTML = `
@@ -593,14 +597,14 @@
               <div style="font-size:14px; font-weight:bold;"><span class="num-badge">#${p.playerNum}</span>${p.name} ${alignment} ${offlineMark}</div>
             </div>
           </div>
-          <div class="voter-badges" id="badges_${p.id}"></div>
+          <div class="voter-badges" id="badges_${p.token}"></div>
         `;
         
         card.onclick = () => { 
           if(!p.isDead || (myRole==='medium' && currentPhase==='NIGHT')) { 
-            selectedTargetId = p.id; 
+            selectedTargetToken = p.token; 
             renderGameGrid(); 
-            if(currentPhase === 'DAY_TALK' && p.id !== socket.id && !isDead) {
+            if(currentPhase === 'DAY_TALK' && p.token !== myToken && !isDead) {
               openWhisperBox(`${p.avatar} ${p.name}`);
             }
           } 
@@ -620,15 +624,15 @@
     function sendWhisperMessage() {
       const text = document.getElementById('whisperInput').value.trim();
       if (!text) return alert('메시지를 입력하세요.');
-      socket.emit('send_whisper', { roomCode: myRoomCode, targetId: selectedTargetId, message: text });
+      socket.emit('send_whisper', { roomCode: myRoomCode, targetToken: selectedTargetToken, message: text });
       closeWhisperBox();
     }
 
     socket.on('vote_update', (votesObj) => {
       document.querySelectorAll('.voter-badges').forEach(b => b.innerHTML = '');
-      for(let [voterToken, tId] of Object.entries(votesObj)){
-        let voter = players.find(p=>p.token===voterToken); // 토큰 기반으로 뱃지 렌더링
-        let badgeBox = document.getElementById('badges_'+tId);
+      for(let [voterToken, tkn] of Object.entries(votesObj)){
+        let voter = players.find(p=>p.token===voterToken); 
+        let badgeBox = document.getElementById('badges_'+tkn);
         if(badgeBox && voter) badgeBox.innerHTML += `<span class="badge">${voter.avatar} ${voter.name}</span>`;
       }
     });
@@ -656,12 +660,12 @@
     });
 
     function proceedHostNextPhase() {
-      socket.emit('host_next_phase', { roomCode: myRoomCode, nextPhase: hostPendingNextPhase, suspectName: hostPendingSuspect, suspectId: hostPendingSuspectId });
+      socket.emit('host_next_phase', { roomCode: myRoomCode, nextPhase: hostPendingNextPhase, suspectName: hostPendingSuspect, suspectToken: hostPendingSuspectToken });
     }
 
     function submitNight(evt) {
-      if(!selectedTargetId && myRole!=='citizen' && evt!=='cast_vote1') return alert('대상을 선택하세요.');
-      socket.emit(evt, { roomCode: myRoomCode, targetId: selectedTargetId, actionType: myRole });
+      if(!selectedTargetToken && myRole!=='citizen' && evt!=='cast_vote1') return alert('대상을 선택하세요.');
+      socket.emit(evt, { roomCode: myRoomCode, targetToken: selectedTargetToken, actionType: myRole });
       document.getElementById('actionPanel').innerHTML = '<button class="btn btn-dark">제출 완료</button>';
     }
     function submitFinal(isExec) {
