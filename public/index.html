@@ -35,7 +35,6 @@
     .marquee-content { white-space: nowrap; animation: marquee 15s linear infinite; text-shadow: 0 0 5px var(--moon-gold); }
     @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
-    /* [수정] 20명이 넘어도 스크롤해서 채팅창을 누를 수 있도록 하단 패딩 240px로 초과 확보 */
     .app-screen { flex: 1; display: flex; flex-direction: column; padding: 14px 14px 240px 14px; position: relative; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     
     .status-panel { padding: 16px; text-align: center; margin-bottom: 16px; }
@@ -125,6 +124,9 @@
         <div style="font-size:40px; font-weight:900; color:var(--blood-glow); text-shadow: 0 0 15px rgba(255,71,87,0.5); margin-bottom:10px;" id="dispRoomCode">----</div>
         <div style="font-size:14px; margin-bottom:10px;">참여 인원: <b id="currentCount" style="color:#fff;">0</b>명</div>
         
+        <!-- [추가] 아바타 변경 버튼 -->
+        <button class="btn btn-dark" style="padding:8px; font-size:13px; margin-bottom:12px;" onclick="openAvatarModal()">🎨 내 캐릭터(이모지) 변경</button>
+
         <div id="lobbyPlayerList" style="display:flex; flex-direction:column; gap:8px; max-height:180px; overflow-y:auto; margin-bottom:16px; text-align:left; border:1px solid rgba(255,255,255,0.1); padding:8px; border-radius:8px; background:rgba(0,0,0,0.3);">
         </div>
 
@@ -247,7 +249,7 @@
         <li><b>📰 기자(시민):</b> 1회 한정 밤 특종 취재, 다음 날 공지</li>
         <li><b>🏛 정치인(시민):</b> 투표권 2표 반영, 찬성 과반 시 처형 면제</li>
         <li><b>🏹 사냥꾼(시민):</b> 마피아에게 죽을 시 조준 타깃 동반 사망</li>
-        <li><b>🔮 영매(시민):</b> 죽은 자의 영혼과 교감하여 직업 확인</li>
+        <li><b>🔮 영매(시민):</b> 죽은 자의 영혼과 교감하여 직업 자동 확인</li>
         <li><b>💕 연인(시민):</b> 1명 피살 시 동반 사망, 커플 채팅</li>
         <li><hr style="border-color:rgba(255,255,255,0.1); margin:10px 0;"></li>
         <li><b style="color:var(--blood-glow);">🔪 마피아(마피아):</b> 밤마다 1명 암살</li>
@@ -274,9 +276,21 @@
     </div>
   </div>
 
+  <!-- [추가] 캐릭터 아바타 변경 모달 -->
+  <div class="modal-overlay hidden" id="avatarModal">
+    <div class="custom-box glass-panel" style="width: 320px;">
+      <h3 style="color:var(--moon-gold); margin-bottom:14px;">🎨 내 캐릭터 선택</h3>
+      <p style="font-size:12px; color:#aaa; margin-bottom:14px;">원하는 이모지를 선택하세요.</p>
+      <div id="avatarGrid" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:10px; font-size:32px;">
+        <!-- JS 렌더링 -->
+      </div>
+      <button class="btn btn-dark" style="margin-top:20px;" onclick="document.getElementById('avatarModal').classList.add('hidden')">닫기</button>
+    </div>
+  </div>
+
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_master_reconnect_perfect_v3';
+    const TOKEN_KEY = 'mafia_token_master_reconnect_perfect_v4';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let wakeLock = null;
@@ -297,6 +311,29 @@
     let hostPendingNextPhase = null, hostPendingSuspect = null, hostPendingSuspectToken = null;
 
     const rNameKr = { 'mafia':'마피아', 'spy':'스파이', 'madam':'마담', 'police':'경찰', 'doctor':'의사', 'reporter':'기자', 'politician':'정치인', 'hunter':'사냥꾼', 'medium':'영매', 'lover':'연인', 'citizen':'시민' };
+    const AVATARS = ['🐶','🐱','🦊','🐻','🐰','🐼','🦁','🐯','🐸','🐵','🦄','🦉','🐙','🦖','👽'];
+
+    // [추가] 아바타 선택 모달 오픈 함수
+    function openAvatarModal() {
+      let grid = document.getElementById('avatarGrid');
+      grid.innerHTML = '';
+      AVATARS.forEach(a => {
+        let div = document.createElement('div');
+        div.textContent = a;
+        div.style.cursor = 'pointer';
+        div.style.background = 'rgba(255,255,255,0.1)';
+        div.style.borderRadius = '8px';
+        div.style.padding = '5px';
+        div.style.transition = '0.2s';
+        div.onmousedown = () => div.style.background = 'rgba(255,255,255,0.3)';
+        div.onclick = () => {
+          socket.emit('change_avatar', { roomCode: myRoomCode, newAvatar: a });
+          document.getElementById('avatarModal').classList.add('hidden');
+        };
+        grid.appendChild(div);
+      });
+      document.getElementById('avatarModal').classList.remove('hidden');
+    }
 
     let audioCtx, isBgmEnabled = true;
     let nightOsc1, nightOsc2, nightGain, heartbeatInterval, trialInterval;
@@ -449,7 +486,6 @@
         document.getElementById('timerBox').textContent = `${m}:${s}`;
       }
       
-      // [추가] 재접속 시 조기 전환 스킵 카운터 동기화
       if (currentPhase === 'DAY_TALK' && data.skipVotesCount !== undefined) {
          let required = Math.ceil(players.filter(x => !x.isDead && !x.isOffline).length / 2);
          let status = document.getElementById('skipVoteStatus');
@@ -535,7 +571,6 @@
       let m = String(Math.floor(remainingTime/60)).padStart(2,'0'), s = String(remainingTime%60).padStart(2,'0');
       document.getElementById('timerBox').textContent = `${m}:${s}`;
       
-      // [추가] 낮 토론 시작 후 60초 경과 시 버튼 활성화 (talkTime 180초 기준 -> 120초 이하일 때 켜짐)
       if (currentPhase === 'DAY_TALK' && remainingTime <= 120 && !isDead) {
         let btn = document.getElementById('skipVoteBtn');
         if (btn && btn.disabled) {
@@ -577,7 +612,6 @@
       if (status) status.textContent = `조기 전환 동의: ${current} / ${required} 명`;
     });
 
-    // [수정] 골든벨 창 닫기 연동
     socket.on('golden_bell_closed', () => {
       document.getElementById('bellModal').classList.add('hidden');
     });
@@ -591,7 +625,7 @@
 
       if(phase === 'DAY_TALK') {
         playBGM('DAY');
-        mySkipVote = false; // 초기화
+        mySkipVote = false;
         title.textContent = "☀️ 낮: 자유 토론"; sub.textContent = "의심되는 카드를 터치하여 귓속말을 보내보세요.";
         act.innerHTML = `
           <div style="display:flex; flex-direction:column; gap:6px;">
@@ -606,7 +640,6 @@
         title.textContent = "🗳️ 1차 지목 투표"; sub.textContent = "의심되는 카드를 선택 후 투표하세요.";
         act.innerHTML = !isDead ? `<button class="btn btn-blood" onclick="submitNight('cast_vote1')">투표 제출</button>` : '';
       } else if (phase === 'VOTE_RESULT') {
-        // 투표 모달 대기
       } else if (phase === 'TRIAL_RESULT') {
         title.textContent = "⚖️ 재판 결과"; sub.textContent = "최종 처형 투표 결과입니다.";
         act.innerHTML = `<div style="text-align:center; color:var(--moon-gold); font-size:15px; font-weight:bold; padding:20px; white-space:pre-wrap;">${suspectName}</div>`;
@@ -775,11 +808,10 @@
     socket.on('golden_bell_hint', (txt) => {
       alert("🔔 " + txt);
       let time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      document.getElementById('memoContent').value += `\n\n[${time} 🔔 단서]\n${txt}`;
+      document.getElementById('memoContent').value += `\n\n[${time} 🔔 골든벨 단서]\n${txt}`;
     });
 
     socket.on('system_msg', (msg) => { 
-      // 팝업 알림과 동시에 수첩에도 기록
       alert("💡 " + msg); 
       let time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
       document.getElementById('memoContent').value += `\n\n[${time} 시스템]\n${msg}`;
