@@ -128,7 +128,6 @@ function resolveNight(room) {
       let p = room.players.find(p => p.token === tkn);
       if (p && !p.isDead) { 
         p.isDead = true; 
-        // [추가] 사망자의 소속 팀 확인
         let team = ['mafia','spy','madam'].includes(p.role) ? '마피아 팀' : '시민 팀';
         killedNames.push(`${p.name}(${team})`); 
       }
@@ -141,8 +140,14 @@ function resolveNight(room) {
 
     room.phase = 'DAY_TALK';
     room.dayCount++;
-    room.players.forEach(p => { p.whisperedToday = []; p.skipVote = false; });
+    room.dayStartTime = Date.now(); // [추가] 낮 시작 시간 기록 (조기 투표 쿨타임용)
     room.skipVotesCount = 0;
+    
+    room.players.forEach(p => { 
+      p.whisperedToday = []; 
+      p.skipVote = false; 
+      p.extraVote = false; // [추가] 매일 아침 골든벨 보상(추가 투표권) 초기화
+    });
 
     io.to(room.code).emit('player_list_updated', room.players);
     io.to(room.code).emit('night_result', { killedNames, winner, dayCount: room.dayCount, news: room.morningNews });
@@ -186,11 +191,15 @@ function tallyVote1(room) {
       let voter = room.players.find(p => p.token === voterToken);
       let target = room.players.find(p => p.token === targetToken);
       if(!voter || !target) continue;
-      let weight = (voter.role === 'politician') ? 2 : 1;
+      
+      // [수정] 정치인 기본 2표 + 골든벨 보상(+1표) 합산 적용
+      let baseWeight = (voter.role === 'politician') ? 2 : 1;
+      let extra = voter.extraVote ? 1 : 0;
+      let weight = baseWeight + extra;
       
       counts[targetToken] = (counts[targetToken] || 0) + weight;
       if(!votersOf[targetToken]) votersOf[targetToken] = [];
-      votersOf[targetToken].push(`${voter.name}${weight>1?"(2표)":""}`);
+      votersOf[targetToken].push(`${voter.name}${weight>1 ? `(${weight}표)` : ""}`);
     }
 
     let maxVote = 0, topTargetToken = null, isTie = false;
@@ -248,7 +257,6 @@ function tallyFinalVote(room) {
       } else {
         if (suspect) {
           suspect.isDead = true;
-          // [추가] 처형자 진영 확인
           let sTeam = ['mafia','spy','madam'].includes(suspect.role) ? '마피아 팀' : '시민 팀';
           resultMsg = `[처형 집행] 투표 결과에 따라 [${suspect.name}]님이 처형되었습니다.\n(정체: ${sTeam})`;
         }
@@ -315,7 +323,8 @@ io.on('connection', (socket) => {
         code: roomCode, hostId: null, phase: 'LOBBY', dayCount: 1, players: [],
         votes1: {}, votesFinal: { execute: 0, spare: 0, votedTokens: [] },
         nightActions: {}, timerInterval: null, remainingTime: 0,
-        talkTime: 180, skipVotesCount: 0, reporterUsed: false
+        talkTime: 180, skipVotesCount: 0, reporterUsed: false,
+        dayStartTime: Date.now()
       };
     }
     if (!room) return socket.emit('error_msg', '존재하지 않는 방입니다.');
@@ -333,7 +342,8 @@ io.on('connection', (socket) => {
         roomCode, role: existingPlayer.role, phase: room.phase, 
         isDead: existingPlayer.isDead, isHost: existingPlayer.isHost,
         players: room.players, suspectName: room.suspectName, suspectToken: room.suspectToken,
-        remainingTime: room.remainingTime
+        remainingTime: room.remainingTime,
+        skipVotesCount: room.skipVotesCount // [추가] 재접속 시 스킵 카운트도 전달
       });
       
       if (room.phase === 'VOTE_RESULT' && room.voteResultData) {
@@ -352,7 +362,8 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     room.players.push({
       id: socket.id, name: playerName, token: newToken, role: null, 
-      isDead: false, isOffline: false, isHost: isHost, whisperedToday: [], skipVote: false,
+      isDead: false, isOffline: false, isHost: isHost, whisperedToday: [], 
+      skipVote: false, extraVote: false, // [추가] 골든벨 보상 초기화
       playerNum: room.players.length + 1,
       avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)]
     });
@@ -408,6 +419,7 @@ io.on('connection', (socket) => {
     });
 
     room.phase = 'DAY_TALK';
+    room.dayStartTime = Date.now(); // 시작 시간 저장
     io.to(roomCode).emit('player_list_updated', room.players);
     io.to(roomCode).emit('phase_changed', { phase: 'DAY_TALK' });
     io.to(roomCode).emit('public_chat_received', { sender: '🎮 시스템', text: startMsg, isDead: false });
@@ -415,17 +427,28 @@ io.on('connection', (socket) => {
     startPhaseTimer(room, room.talkTime, () => startVote1(room));
   });
 
-  socket.on('skip_vote_req', ({ roomCode }) => {
+  // [수정] 조기 전환 쿨타임(60초) 및 사일런트 토글 로직
+  socket.on('skip_vote_toggle', ({ roomCode, state }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'DAY_TALK') return;
+    
+    // 60초 쿨타임 컷
+    if (Date.now() - room.dayStartTime < 60000) return;
+    
     let p = room.players.find(p => p.id === socket.id);
-    if (p && !p.isDead && !p.skipVote) {
-      p.skipVote = true;
-      room.skipVotesCount++;
-      let alive = room.players.filter(x => !x.isDead).length;
-      io.to(roomCode).emit('system_msg', `[투표 조기 전환] 동의: ${room.skipVotesCount} / ${Math.ceil(alive/2)}명`);
-      if (room.skipVotesCount >= Math.ceil(alive / 2)) {
-        clearRoomTimer(room); startVote1(room);
+    if (p && !p.isDead) {
+      p.skipVote = state;
+      let skipCount = room.players.filter(x => x.skipVote && !x.isDead && !x.isOffline).length;
+      let alive = room.players.filter(x => !x.isDead && !x.isOffline).length;
+      let required = Math.ceil(alive / 2);
+      
+      room.skipVotesCount = skipCount;
+      // 팝업(system_msg) 대신 조용히 상태만 업데이트
+      io.to(roomCode).emit('skip_vote_update', { current: skipCount, required: required });
+      
+      if (skipCount >= required) {
+        clearRoomTimer(room); 
+        startVote1(room);
       }
     }
   });
@@ -519,19 +542,20 @@ io.on('connection', (socket) => {
     }
   });
 
+  // [수정] 골든벨 정답자에게 강력한 보상(+1표) 지급 및 창 닫기 신호
   socket.on('golden_bell_answer', ({ roomCode, ans }) => {
     const room = rooms[roomCode]; if (!room || !room.goldenBellActive) return;
     if (parseInt(ans) === room.goldenBellAnswer) {
       room.goldenBellActive = false; 
-      io.to(roomCode).emit('system_msg', `🔔 누군가 퀴즈 정답을 맞혀 비밀 힌트를 획득했습니다!`);
-      let alive = room.players.filter(p=>!p.isDead);
-      let randP = alive[Math.floor(Math.random() * alive.length)];
-      let team = ['mafia','spy','madam'].includes(randP.role) ? '마피아 팀' : '시민 팀';
+      let solver = room.players.find(p => p.id === socket.id);
+      if (solver) solver.extraVote = true; // 투표권 보상 추가
       
-      socket.emit('golden_bell_hint', `[🔔 골든벨 힌트] ${randP.avatar} ${randP.name}님은 [${team}] 소속입니다.`);
+      io.to(roomCode).emit('system_msg', `🔔 [${solver.name}]님이 골든벨 정답을 맞춰 오늘 투표에서 [투표권 +1장]을 획득했습니다!`);
+      // 모두의 팝업창을 즉시 강제 종료
+      io.to(roomCode).emit('golden_bell_closed');
     }
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('마피아 마스터 서버 가동 완료: 포트 ' + PORT));
+server.listen(PORT, () => console.log('마피아 100% 무중단 서버 가동 완료: 포트 ' + PORT));
