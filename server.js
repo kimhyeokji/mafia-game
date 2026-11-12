@@ -11,7 +11,6 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
-const AVATARS = ['🐶','🐱','🦊','🐻','🐰','🐼','🦁','🐯','🐸','🐵','🦄','🦉','🐙','🦖','👽'];
 const rName = { 'mafia':'마피아', 'spy':'스파이', 'madam':'마담', 'police':'경찰', 'doctor':'의사', 'reporter':'기자', 'politician':'정치인', 'hunter':'사냥꾼', 'medium':'영매', 'lover':'연인', 'citizen':'시민' };
 
 function generateRoomCode() {
@@ -140,13 +139,13 @@ function resolveNight(room) {
 
     room.phase = 'DAY_TALK';
     room.dayCount++;
-    room.dayStartTime = Date.now(); // [추가] 낮 시작 시간 기록 (조기 투표 쿨타임용)
+    room.dayStartTime = Date.now();
     room.skipVotesCount = 0;
     
     room.players.forEach(p => { 
       p.whisperedToday = []; 
       p.skipVote = false; 
-      p.extraVote = false; // [추가] 매일 아침 골든벨 보상(추가 투표권) 초기화
+      p.extraVote = false;
     });
 
     io.to(room.code).emit('player_list_updated', room.players);
@@ -192,7 +191,6 @@ function tallyVote1(room) {
       let target = room.players.find(p => p.token === targetToken);
       if(!voter || !target) continue;
       
-      // [수정] 정치인 기본 2표 + 골든벨 보상(+1표) 합산 적용
       let baseWeight = (voter.role === 'politician') ? 2 : 1;
       let extra = voter.extraVote ? 1 : 0;
       let weight = baseWeight + extra;
@@ -316,7 +314,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  const joinOrReconnect = (roomCode, playerName, token, isHostRequest) => {
+  const joinOrReconnect = (roomCode, playerName, token, isHostRequest, userAvatar) => {
     let room = rooms[roomCode];
     if (!room && isHostRequest) {
       room = rooms[roomCode] = {
@@ -333,6 +331,9 @@ io.on('connection', (socket) => {
     if (existingPlayer) {
       existingPlayer.id = socket.id;
       existingPlayer.isOffline = false;
+      // 재접속 시에도 아바타 업데이트 허용 (선택 사항)
+      if(userAvatar && room.phase === 'LOBBY') existingPlayer.avatar = userAvatar;
+
       socket.join(roomCode);
       if (['mafia','spy','madam'].includes(existingPlayer.role)) socket.join(roomCode + '_mafia');
       if (existingPlayer.role === 'lover') socket.join(roomCode + '_lover');
@@ -343,7 +344,7 @@ io.on('connection', (socket) => {
         isDead: existingPlayer.isDead, isHost: existingPlayer.isHost,
         players: room.players, suspectName: room.suspectName, suspectToken: room.suspectToken,
         remainingTime: room.remainingTime,
-        skipVotesCount: room.skipVotesCount // [추가] 재접속 시 스킵 카운트도 전달
+        skipVotesCount: room.skipVotesCount 
       });
       
       if (room.phase === 'VOTE_RESULT' && room.voteResultData) {
@@ -363,9 +364,9 @@ io.on('connection', (socket) => {
     room.players.push({
       id: socket.id, name: playerName, token: newToken, role: null, 
       isDead: false, isOffline: false, isHost: isHost, whisperedToday: [], 
-      skipVote: false, extraVote: false, // [추가] 골든벨 보상 초기화
+      skipVote: false, extraVote: false,
       playerNum: room.players.length + 1,
-      avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)]
+      avatar: userAvatar || '👤' // [수정] 클라이언트에서 선택한 아바타 반영
     });
     
     if (isHost) room.hostId = socket.id;
@@ -373,13 +374,16 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('player_list_updated', room.players);
   };
 
-  socket.on('create_room', ({ hostName, token }) => {
+  // [수정] 아바타 정보를 포함하여 방 생성/참가
+  socket.on('create_room', ({ hostName, token, avatar }) => {
     let roomCode = generateRoomCode();
     while (rooms[roomCode]) roomCode = generateRoomCode();
-    joinOrReconnect(roomCode, hostName, token, true);
+    joinOrReconnect(roomCode, hostName, token, true, avatar);
   });
 
-  socket.on('join_room', ({ roomCode, playerName, token }) => joinOrReconnect(roomCode, playerName, token, false));
+  socket.on('join_room', ({ roomCode, playerName, token, avatar }) => {
+    joinOrReconnect(roomCode, playerName, token, false, avatar);
+  });
 
   socket.on('start_game', ({ roomCode, selectedRoles, mafiaCount }) => {
     const room = rooms[roomCode];
@@ -419,7 +423,7 @@ io.on('connection', (socket) => {
     });
 
     room.phase = 'DAY_TALK';
-    room.dayStartTime = Date.now(); // 시작 시간 저장
+    room.dayStartTime = Date.now(); 
     io.to(roomCode).emit('player_list_updated', room.players);
     io.to(roomCode).emit('phase_changed', { phase: 'DAY_TALK' });
     io.to(roomCode).emit('public_chat_received', { sender: '🎮 시스템', text: startMsg, isDead: false });
@@ -427,12 +431,10 @@ io.on('connection', (socket) => {
     startPhaseTimer(room, room.talkTime, () => startVote1(room));
   });
 
-  // [수정] 조기 전환 쿨타임(60초) 및 사일런트 토글 로직
   socket.on('skip_vote_toggle', ({ roomCode, state }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'DAY_TALK') return;
     
-    // 60초 쿨타임 컷
     if (Date.now() - room.dayStartTime < 60000) return;
     
     let p = room.players.find(p => p.id === socket.id);
@@ -443,7 +445,6 @@ io.on('connection', (socket) => {
       let required = Math.ceil(alive / 2);
       
       room.skipVotesCount = skipCount;
-      // 팝업(system_msg) 대신 조용히 상태만 업데이트
       io.to(roomCode).emit('skip_vote_update', { current: skipCount, required: required });
       
       if (skipCount >= required) {
@@ -542,16 +543,14 @@ io.on('connection', (socket) => {
     }
   });
 
-  // [수정] 골든벨 정답자에게 강력한 보상(+1표) 지급 및 창 닫기 신호
   socket.on('golden_bell_answer', ({ roomCode, ans }) => {
     const room = rooms[roomCode]; if (!room || !room.goldenBellActive) return;
     if (parseInt(ans) === room.goldenBellAnswer) {
       room.goldenBellActive = false; 
       let solver = room.players.find(p => p.id === socket.id);
-      if (solver) solver.extraVote = true; // 투표권 보상 추가
+      if (solver) solver.extraVote = true; 
       
       io.to(roomCode).emit('system_msg', `🔔 [${solver.name}]님이 골든벨 정답을 맞춰 오늘 투표에서 [투표권 +1장]을 획득했습니다!`);
-      // 모두의 팝업창을 즉시 강제 종료
       io.to(roomCode).emit('golden_bell_closed');
     }
   });
