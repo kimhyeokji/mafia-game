@@ -11,6 +11,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
+const AVATARS = ['🐶','🐱','🦊','🐻','🐰','🐼','🦁','🐯','🐸','🐵','🦄','🦉','🐙','🦖','👽'];
 const rName = { 'mafia':'마피아', 'spy':'스파이', 'madam':'마담', 'police':'경찰', 'doctor':'의사', 'reporter':'기자', 'politician':'정치인', 'hunter':'사냥꾼', 'medium':'영매', 'lover':'연인', 'citizen':'시민' };
 
 function generateRoomCode() {
@@ -145,7 +146,7 @@ function resolveNight(room) {
     room.players.forEach(p => { 
       p.whisperedToday = []; 
       p.skipVote = false; 
-      p.extraVote = false;
+      p.extraVote = false; 
     });
 
     io.to(room.code).emit('player_list_updated', room.players);
@@ -314,7 +315,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  const joinOrReconnect = (roomCode, playerName, token, isHostRequest, userAvatar) => {
+  const joinOrReconnect = (roomCode, playerName, token, isHostRequest) => {
     let room = rooms[roomCode];
     if (!room && isHostRequest) {
       room = rooms[roomCode] = {
@@ -331,9 +332,6 @@ io.on('connection', (socket) => {
     if (existingPlayer) {
       existingPlayer.id = socket.id;
       existingPlayer.isOffline = false;
-      // 재접속 시에도 아바타 업데이트 허용 (선택 사항)
-      if(userAvatar && room.phase === 'LOBBY') existingPlayer.avatar = userAvatar;
-
       socket.join(roomCode);
       if (['mafia','spy','madam'].includes(existingPlayer.role)) socket.join(roomCode + '_mafia');
       if (existingPlayer.role === 'lover') socket.join(roomCode + '_lover');
@@ -344,7 +342,7 @@ io.on('connection', (socket) => {
         isDead: existingPlayer.isDead, isHost: existingPlayer.isHost,
         players: room.players, suspectName: room.suspectName, suspectToken: room.suspectToken,
         remainingTime: room.remainingTime,
-        skipVotesCount: room.skipVotesCount 
+        skipVotesCount: room.skipVotesCount
       });
       
       if (room.phase === 'VOTE_RESULT' && room.voteResultData) {
@@ -366,7 +364,7 @@ io.on('connection', (socket) => {
       isDead: false, isOffline: false, isHost: isHost, whisperedToday: [], 
       skipVote: false, extraVote: false,
       playerNum: room.players.length + 1,
-      avatar: userAvatar || '👤' // [수정] 클라이언트에서 선택한 아바타 반영
+      avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)]
     });
     
     if (isHost) room.hostId = socket.id;
@@ -374,15 +372,23 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('player_list_updated', room.players);
   };
 
-  // [수정] 아바타 정보를 포함하여 방 생성/참가
-  socket.on('create_room', ({ hostName, token, avatar }) => {
+  socket.on('create_room', ({ hostName, token }) => {
     let roomCode = generateRoomCode();
     while (rooms[roomCode]) roomCode = generateRoomCode();
-    joinOrReconnect(roomCode, hostName, token, true, avatar);
+    joinOrReconnect(roomCode, hostName, token, true);
   });
 
-  socket.on('join_room', ({ roomCode, playerName, token, avatar }) => {
-    joinOrReconnect(roomCode, playerName, token, false, avatar);
+  socket.on('join_room', ({ roomCode, playerName, token }) => joinOrReconnect(roomCode, playerName, token, false));
+
+  // [추가] 대기실에서 아바타 커스텀 변경 적용
+  socket.on('change_avatar', ({ roomCode, newAvatar }) => {
+    const room = rooms[roomCode];
+    if (!room || room.phase !== 'LOBBY') return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (player) {
+      player.avatar = newAvatar;
+      io.to(roomCode).emit('player_list_updated', room.players);
+    }
   });
 
   socket.on('start_game', ({ roomCode, selectedRoles, mafiaCount }) => {
