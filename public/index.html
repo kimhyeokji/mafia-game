@@ -35,7 +35,8 @@
     .marquee-content { white-space: nowrap; animation: marquee 15s linear infinite; text-shadow: 0 0 5px var(--moon-gold); }
     @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
-    .app-screen { flex: 1; display: flex; flex-direction: column; padding: 14px 14px 160px 14px; position: relative; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    /* [수정] 20명이 넘어도 스크롤해서 채팅창을 누를 수 있도록 하단 패딩 240px로 초과 확보 */
+    .app-screen { flex: 1; display: flex; flex-direction: column; padding: 14px 14px 240px 14px; position: relative; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     
     .status-panel { padding: 16px; text-align: center; margin-bottom: 16px; }
     .phase-badge { font-size: 14px; font-weight: 900; color: var(--blood-glow); text-shadow: 0 0 10px var(--blood-glow); }
@@ -275,7 +276,7 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_master_final_teamreveal';
+    const TOKEN_KEY = 'mafia_token_master_reconnect_perfect_v3';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let wakeLock = null;
@@ -448,6 +449,13 @@
         document.getElementById('timerBox').textContent = `${m}:${s}`;
       }
       
+      // [추가] 재접속 시 조기 전환 스킵 카운터 동기화
+      if (currentPhase === 'DAY_TALK' && data.skipVotesCount !== undefined) {
+         let required = Math.ceil(players.filter(x => !x.isDead && !x.isOffline).length / 2);
+         let status = document.getElementById('skipVoteStatus');
+         if(status) status.textContent = `조기 전환 동의: ${data.skipVotesCount} / ${required} 명`;
+      }
+      
       handlePhaseChange(data.phase, data.suspectName, data.suspectToken);
     });
 
@@ -496,7 +504,7 @@
       else if(role==='reporter'){title="기자"; icon="📰"; desc="1회 한정 밤 특종 취재";}
       else if(role==='politician'){title="정치인"; icon="🏛"; desc="투표권 2표, 처형 면제";}
       else if(role==='hunter'){title="사냥꾼"; icon="🏹"; desc="마피아에게 죽으면 길동무";}
-      else if(role==='medium'){title="영매"; icon="🔮"; desc="사망자 직업 확인";}
+      else if(role==='medium'){title="영매"; icon="🔮"; desc="사망자 직업 자동 확인";}
       else if(role==='lover'){title="연인"; icon="💕"; desc="비밀 채팅, 1명 죽으면 동반사망";}
       
       document.getElementById('roleTitle').textContent = title;
@@ -522,9 +530,20 @@
 
     function closeModals() { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden')); }
 
+    let mySkipVote = false;
     socket.on('timer_tick', ({ remainingTime }) => {
       let m = String(Math.floor(remainingTime/60)).padStart(2,'0'), s = String(remainingTime%60).padStart(2,'0');
       document.getElementById('timerBox').textContent = `${m}:${s}`;
+      
+      // [추가] 낮 토론 시작 후 60초 경과 시 버튼 활성화 (talkTime 180초 기준 -> 120초 이하일 때 켜짐)
+      if (currentPhase === 'DAY_TALK' && remainingTime <= 120 && !isDead) {
+        let btn = document.getElementById('skipVoteBtn');
+        if (btn && btn.disabled) {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          if (!mySkipVote) btn.textContent = "투표로 조기 전환";
+        }
+      }
     });
 
     socket.on('phase_sync', ({ nextPhase, suspectName, suspectToken }) => {
@@ -538,6 +557,31 @@
       handlePhaseChange(phase, suspectName, suspectToken); 
     });
 
+    function toggleSkipVote() {
+      mySkipVote = !mySkipVote;
+      let btn = document.getElementById('skipVoteBtn');
+      if (btn) {
+        if (mySkipVote) {
+          btn.classList.replace('btn-dark', 'btn-blood');
+          btn.textContent = "투표 전환 취소";
+        } else {
+          btn.classList.replace('btn-blood', 'btn-dark');
+          btn.textContent = "투표로 조기 전환";
+        }
+      }
+      socket.emit('skip_vote_toggle', { roomCode: myRoomCode, state: mySkipVote });
+    }
+
+    socket.on('skip_vote_update', ({ current, required }) => {
+      let status = document.getElementById('skipVoteStatus');
+      if (status) status.textContent = `조기 전환 동의: ${current} / ${required} 명`;
+    });
+
+    // [수정] 골든벨 창 닫기 연동
+    socket.on('golden_bell_closed', () => {
+      document.getElementById('bellModal').classList.add('hidden');
+    });
+
     function handlePhaseChange(phase, suspectName, suspectToken) {
       currentPhase = phase; selectedTargetToken = null;
       let title = document.getElementById('phaseTitle'), sub = document.getElementById('phaseSubtitle');
@@ -547,11 +591,17 @@
 
       if(phase === 'DAY_TALK') {
         playBGM('DAY');
+        mySkipVote = false; // 초기화
         title.textContent = "☀️ 낮: 자유 토론"; sub.textContent = "의심되는 카드를 터치하여 귓속말을 보내보세요.";
-        act.innerHTML = `<div style="display:flex; gap:8px;">
-          <button class="btn btn-dark" onclick="sendAnonTip()">익명 제보 보내기</button>
-          ${!isDead ? `<button class="btn btn-blood" onclick="socket.emit('skip_vote_req', {roomCode: myRoomCode})">투표로 조기 전환</button>` : ''}
-        </div>`;
+        act.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <button class="btn btn-dark" onclick="sendAnonTip()">익명 제보 보내기</button>
+            ${!isDead ? `
+              <button id="skipVoteBtn" class="btn btn-dark" style="opacity:0.4; transition:0.3s;" disabled onclick="toggleSkipVote()">조기 전환 (60초 후 열림)</button>
+              <div id="skipVoteStatus" style="font-size:12px; color:#aaa; text-align:center;">조기 전환 동의: 0 명</div>
+            ` : ''}
+          </div>
+        `;
       } else if (phase === 'DAY_VOTE1') {
         title.textContent = "🗳️ 1차 지목 투표"; sub.textContent = "의심되는 카드를 선택 후 투표하세요.";
         act.innerHTML = !isDead ? `<button class="btn btn-blood" onclick="submitNight('cast_vote1')">투표 제출</button>` : '';
@@ -559,7 +609,6 @@
         // 투표 모달 대기
       } else if (phase === 'TRIAL_RESULT') {
         title.textContent = "⚖️ 재판 결과"; sub.textContent = "최종 처형 투표 결과입니다.";
-        // [수정] 처형 결과 문자열 그대로 출력 (진영 포함됨)
         act.innerHTML = `<div style="text-align:center; color:var(--moon-gold); font-size:15px; font-weight:bold; padding:20px; white-space:pre-wrap;">${suspectName}</div>`;
       } else if (phase === 'TRIAL_DEFENSE') {
         playBGM('TRIAL'); document.body.classList.add('phase-trial');
@@ -699,7 +748,6 @@
       
       if(data.killedNames.length > 0) playScream();
       
-      // [수정] 배열 안의 요소들이 이미 "이름(진영)" 포맷이므로 깔끔하게 조인됩니다.
       let txt = `☀️ 아침이 밝았습니다.\n\n`;
       txt += data.killedNames.length > 0 ? `🩸 간밤의 희생자: ${data.killedNames.join(', ')}` : `🕊️ 간밤에 사망자가 발생하지 않았습니다.`;
       if(data.news) txt += `\n\n${data.news}`;
@@ -727,10 +775,15 @@
     socket.on('golden_bell_hint', (txt) => {
       alert("🔔 " + txt);
       let time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      document.getElementById('memoContent').value += `\n\n[${time} 🔔 골든벨 단서]\n${txt}`;
+      document.getElementById('memoContent').value += `\n\n[${time} 🔔 단서]\n${txt}`;
     });
 
-    socket.on('system_msg', (msg) => { alert("💡 " + msg); });
+    socket.on('system_msg', (msg) => { 
+      // 팝업 알림과 동시에 수첩에도 기록
+      alert("💡 " + msg); 
+      let time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('memoContent').value += `\n\n[${time} 시스템]\n${msg}`;
+    });
     socket.on('error_msg', (msg) => { alert("❌ " + msg); });
 
     function switchChat(tab) {
@@ -796,7 +849,6 @@
 
     function submitBell(ans) {
       socket.emit('golden_bell_answer', { roomCode: myRoomCode, ans: ans });
-      document.getElementById('bellModal').classList.add('hidden');
     }
   </script>
 </body>
