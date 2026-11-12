@@ -6,7 +6,7 @@
   <title>의령여고 마피아의 밤</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&family=Noto+Serif+KR:wght@700&display=swap');
     
     :root {
       --bg-dark: #07090e; --border-color: rgba(255, 255, 255, 0.1);
@@ -86,7 +86,9 @@
 </head>
 <body>
   
-  <audio id="bgmDay" loop src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3"></audio>
+  <audio id="bgmDay" loop src="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3"></audio>
+  <audio id="bgmNight" loop src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3"></audio> 
+  <audio id="bgmTrial" loop src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3"></audio>
 
   <div class="marquee-container hidden" id="marqueeBox">
     <div class="marquee-content" id="marqueeText">대기실입니다. 방장이 설정을 마칠 때까지 기다려주세요.</div>
@@ -124,7 +126,6 @@
         <div style="font-size:40px; font-weight:900; color:var(--blood-glow); text-shadow: 0 0 15px rgba(255,71,87,0.5); margin-bottom:10px;" id="dispRoomCode">----</div>
         <div style="font-size:14px; margin-bottom:10px;">참여 인원: <b id="currentCount" style="color:#fff;">0</b>명</div>
         
-        <!-- [추가] 아바타 변경 버튼 -->
         <button class="btn btn-dark" style="padding:8px; font-size:13px; margin-bottom:12px;" onclick="openAvatarModal()">🎨 내 캐릭터(이모지) 변경</button>
 
         <div id="lobbyPlayerList" style="display:flex; flex-direction:column; gap:8px; max-height:180px; overflow-y:auto; margin-bottom:16px; text-align:left; border:1px solid rgba(255,255,255,0.1); padding:8px; border-radius:8px; background:rgba(0,0,0,0.3);">
@@ -240,6 +241,22 @@
     </div>
   </div>
 
+  <!-- [추가] 아침 신문 전용 모달창 -->
+  <div class="modal-overlay hidden" id="newspaperModal" style="z-index: 150;">
+    <div class="custom-box" style="background: #fdfbf7; color: #111; border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); border: 1px solid #ccc; font-family: 'Noto Serif KR', serif; padding: 30px 20px;">
+      <div style="border-bottom: 3px double #333; padding-bottom: 10px; margin-bottom: 15px;">
+        <h2 style="font-size: 28px; font-weight: 900; margin:0; letter-spacing: 2px; font-family: 'Noto Serif KR', serif;">의령 일간지</h2>
+        <div style="font-size: 12px; color: #555; margin-top: 5px; display:flex; justify-content:space-between; font-weight:bold;">
+          <span>마피아 사태 특별호</span> <span id="newsDayCount">제 2일차 아침</span>
+        </div>
+      </div>
+      <h3 style="font-size: 19px; font-weight: 900; margin-bottom: 14px; color: #8b0000; line-height: 1.4;" id="newsHeadline">어젯밤 끔찍한 사건이...</h3>
+      <p style="font-size: 14px; line-height: 1.6; text-align: left; margin-bottom: 15px; border-bottom: 1px dashed #ccc; padding-bottom: 15px; font-weight: bold;" id="newsBody"></p>
+      <div id="newsReporterInfo" style="font-size: 13px; line-height: 1.5; text-align: left; color: #333; font-weight: bold;"></div>
+      <button class="btn" style="background: #333; color:#fff; border-radius: 4px; margin-top: 20px; box-shadow:none;" onclick="document.getElementById('newspaperModal').classList.add('hidden')">기사 덮기</button>
+    </div>
+  </div>
+
   <div class="modal-overlay hidden" id="guideModal">
     <div class="custom-box glass-panel" style="max-height:80vh; overflow-y:auto; text-align:left;">
       <h3 style="text-align:center; margin-bottom:14px; color:var(--moon-gold);">📖 직업 도감</h3>
@@ -255,15 +272,16 @@
         <li><b style="color:var(--blood-glow);">🔪 마피아(마피아):</b> 밤마다 1명 암살</li>
         <li><b style="color:var(--blood-glow);">🎭 스파이(마피아):</b> 경찰 조사 시 시민으로 위장</li>
         <li><b style="color:var(--blood-glow);">💋 마담(마피아):</b> 밤마다 1명 능력 무력화</li>
+        <li><b style="color:var(--blood-glow);">💔 흑화 연인(마피아):</b> 마피아와 연인 채팅 모두 참여</li>
       </ul>
       <button class="btn btn-dark" style="margin-top:20px;" onclick="closeModals()">닫기</button>
     </div>
   </div>
 
-  <div class="modal-overlay hidden" id="bellModal">
+  <div class="modal-overlay hidden" id="bellModal" style="z-index: 200;">
     <div class="glass-panel" style="padding:20px; text-align:center;">
       <h3 style="color:var(--moon-gold); margin-bottom:10px; font-size:20px;">🔔 기습 골든벨 퀴즈</h3>
-      <p style="font-size:13px; margin-bottom:14px;">순간 포착! 파란 점은 총 몇 개였을까요?</p>
+      <p style="font-size:13px; margin-bottom:14px;">순간 포착! 파란 점은 총 몇 개였을까요?<br><span style="color:#7cb5ec">(최초 정답자 투표권 +1 획득!)</span></p>
       <canvas id="goldenBellCanvas"></canvas>
       <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:20px;">
         <button class="btn btn-dark" onclick="submitBell(4)">4</button>
@@ -276,13 +294,11 @@
     </div>
   </div>
 
-  <!-- [추가] 캐릭터 아바타 변경 모달 -->
   <div class="modal-overlay hidden" id="avatarModal">
     <div class="custom-box glass-panel" style="width: 320px;">
       <h3 style="color:var(--moon-gold); margin-bottom:14px;">🎨 내 캐릭터 선택</h3>
       <p style="font-size:12px; color:#aaa; margin-bottom:14px;">원하는 이모지를 선택하세요.</p>
       <div id="avatarGrid" style="display:grid; grid-template-columns:repeat(5, 1fr); gap:10px; font-size:32px;">
-        <!-- JS 렌더링 -->
       </div>
       <button class="btn btn-dark" style="margin-top:20px;" onclick="document.getElementById('avatarModal').classList.add('hidden')">닫기</button>
     </div>
@@ -290,7 +306,7 @@
 
   <script>
     const socket = io();
-    const TOKEN_KEY = 'mafia_token_master_reconnect_perfect_v4';
+    const TOKEN_KEY = 'mafia_token_master_final_newspaper';
     let myToken = localStorage.getItem(TOKEN_KEY);
     
     let wakeLock = null;
@@ -305,7 +321,7 @@
       if (wakeLock !== null && document.visibilityState === 'visible') { requestWakeLock(); }
     });
     
-    let myRoomCode = null, myName = '', myRole = null, isHost = false, isDead = false;
+    let myRoomCode = null, myName = '', myRole = null, myIsMafiaLover = false, isHost = false, isDead = false;
     let players = [], selectedTargetToken = null, currentPhase = 'LOBBY';
     let currentChatTab = 'public';
     let hostPendingNextPhase = null, hostPendingSuspect = null, hostPendingSuspectToken = null;
@@ -313,7 +329,6 @@
     const rNameKr = { 'mafia':'마피아', 'spy':'스파이', 'madam':'마담', 'police':'경찰', 'doctor':'의사', 'reporter':'기자', 'politician':'정치인', 'hunter':'사냥꾼', 'medium':'영매', 'lover':'연인', 'citizen':'시민' };
     const AVATARS = ['🐶','🐱','🦊','🐻','🐰','🐼','🦁','🐯','🐸','🐵','🦄','🦉','🐙','🦖','👽'];
 
-    // [추가] 아바타 선택 모달 오픈 함수
     function openAvatarModal() {
       let grid = document.getElementById('avatarGrid');
       grid.innerHTML = '';
@@ -360,26 +375,24 @@
       clearInterval(trialInterval);
     }
 
+    // [수정] 모바일을 뚫는 날카로운 비명 소리 엔진 강화
     function playScream() {
       if (!audioCtx || !isBgmEnabled) return;
-      let osc1 = audioCtx.createOscillator();
-      let osc2 = audioCtx.createOscillator();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      let osc = audioCtx.createOscillator();
       let gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
       
-      osc1.type = 'sawtooth'; osc2.type = 'sawtooth';
-      osc1.frequency.setValueAtTime(1200, audioCtx.currentTime);
-      osc1.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 1.2);
-      osc2.frequency.setValueAtTime(1500, audioCtx.currentTime);
-      osc2.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 1.2);
+      osc.frequency.setValueAtTime(2000, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 1.0);
       
-      gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.2);
+      gain.gain.setValueAtTime(1.0, audioCtx.currentTime); // MAX VOLUME
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.0);
       
-      osc1.connect(gain); osc2.connect(gain);
+      osc.connect(gain);
       gain.connect(audioCtx.destination);
-      
-      osc1.start(); osc2.start();
-      osc1.stop(audioCtx.currentTime + 1.2); osc2.stop(audioCtx.currentTime + 1.2);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 1.0);
     }
 
     function playBGM(phase) {
@@ -467,7 +480,7 @@
     }
 
     socket.on('reconnect_success', (data) => {
-      myRoomCode = data.roomCode; myRole = data.role; isDead = data.isDead; isHost = data.isHost;
+      myRoomCode = data.roomCode; myRole = data.role; myIsMafiaLover = data.isMafiaLover; isDead = data.isDead; isHost = data.isHost;
       localStorage.setItem(TOKEN_KEY, myToken);
       document.getElementById('viewLobby').classList.add('hidden');
       document.getElementById('viewWaitingRoom').classList.add('hidden');
@@ -499,7 +512,7 @@
       players = pList;
       document.getElementById('currentCount').textContent = players.length;
       let me = players.find(p => p.token === myToken);
-      if(me) { isDead = me.isDead; myRole = me.role; }
+      if(me) { isDead = me.isDead; myRole = me.role; myIsMafiaLover = me.isMafiaLover; }
       
       let lobbyList = document.getElementById('lobbyPlayerList');
       if (lobbyList) {
@@ -523,8 +536,9 @@
       socket.emit('start_game', { roomCode: myRoomCode, selectedRoles: selected, mafiaCount: mCount });
     }
 
-    socket.on('role_assigned', ({ role }) => {
+    socket.on('role_assigned', ({ role, isMafiaLover }) => {
       myRole = role;
+      myIsMafiaLover = isMafiaLover;
       document.getElementById('viewWaitingRoom').classList.add('hidden');
       document.getElementById('viewMainGame').classList.remove('hidden');
       document.getElementById('marqueeBox').classList.remove('hidden');
@@ -541,7 +555,8 @@
       else if(role==='politician'){title="정치인"; icon="🏛"; desc="투표권 2표, 처형 면제";}
       else if(role==='hunter'){title="사냥꾼"; icon="🏹"; desc="마피아에게 죽으면 길동무";}
       else if(role==='medium'){title="영매"; icon="🔮"; desc="사망자 직업 자동 확인";}
-      else if(role==='lover'){title="연인"; icon="💕"; desc="비밀 채팅, 1명 죽으면 동반사망";}
+      else if(role==='lover' && !isMafiaLover){title="연인(시민)"; icon="💕"; desc="비밀 채팅, 1명 죽으면 동반사망";}
+      else if(role==='lover' && isMafiaLover){title="흑화 연인(마피아)"; icon="💔"; desc="마피아 채팅 참여. 마피아 팀과 승리";}
       
       document.getElementById('roleTitle').textContent = title;
       document.getElementById('roleIcon').textContent = icon;
@@ -559,8 +574,9 @@
     }
     function closeRoleModal() { document.getElementById('roleModal').classList.add('hidden'); }
 
+    // [수정] 마피아 흑화 연인일 경우 마피아 탭과 연인 탭 둘 다 오픈
     function setupRoleTabs() {
-      if(['mafia','spy','madam'].includes(myRole)) document.getElementById('tabMaf').classList.remove('hidden');
+      if(['mafia','spy','madam'].includes(myRole) || myIsMafiaLover) document.getElementById('tabMaf').classList.remove('hidden');
       if(myRole === 'lover') document.getElementById('tabLov').classList.remove('hidden');
     }
 
@@ -662,7 +678,7 @@
         if(isDead) act.innerHTML = `<button class="btn btn-dark">관전 중</button>`;
         else {
           let btnText = "확인 완료(능력 없음)"; let btnClass = "btn-dark";
-          if(myRole==='mafia'){btnText="암살 지목 확정"; btnClass="btn-blood";}
+          if(myRole==='mafia' || myIsMafiaLover){btnText="암살 지목 확정"; btnClass="btn-blood";}
           if(myRole==='madam'){btnText="유혹 지목 확정"; btnClass="btn-blood";}
           if(myRole==='police'){btnText="마피아 조사 확정"; btnClass="btn-dark";}
           if(myRole==='doctor'){btnText="보호 대상 확정"; btnClass="btn-green";}
@@ -683,7 +699,7 @@
         card.className = `player-card ${isD} ${isSel}`;
         
         let alignment = '';
-        if (isDead && !p.isDead) alignment = ['mafia','spy','madam'].includes(p.role) ? '🔴' : '🔵';
+        if (isDead && !p.isDead) alignment = ['mafia','spy','madam'].includes(p.role) || p.isMafiaLover ? '🔴' : '🔵';
         
         let deadRoleStr = '';
         if (p.isDead && myRole === 'medium') {
@@ -776,15 +792,29 @@
       document.getElementById('actionPanel').innerHTML = '<button class="btn btn-dark">제출 완료</button>';
     }
 
-    socket.on('night_result', (data) => {
+    // [수정] 아침 신문 출력 및 비명소리 로직 추가
+    socket.on('night_result_newspaper', (data) => {
       if(data.winner) { alert(`🏆 게임 종료! [${data.winner}] 승리! 모든 직업이 공개됩니다.`); location.reload(); return; }
       
       if(data.killedNames.length > 0) playScream();
       
-      let txt = `☀️ 아침이 밝았습니다.\n\n`;
-      txt += data.killedNames.length > 0 ? `🩸 간밤의 희생자: ${data.killedNames.join(', ')}` : `🕊️ 간밤에 사망자가 발생하지 않았습니다.`;
-      if(data.news) txt += `\n\n${data.news}`;
-      alert(txt);
+      document.getElementById('newsDayCount').textContent = `제 ${data.dayCount}일차 아침`;
+      
+      if (data.killedNames.length > 0) {
+        document.getElementById('newsHeadline').textContent = "어젯밤 끔찍한 사건이 발생했습니다.";
+        document.getElementById('newsBody').textContent = `경찰 조사 결과, 간밤에 [ ${data.killedNames.join(', ')} ] 님이 차가운 주검으로 발견되었습니다.`;
+      } else {
+        document.getElementById('newsHeadline').textContent = "간밤에 아무 일도 없었습니다.";
+        document.getElementById('newsBody').textContent = "평화로운 밤이 지나고 아침이 밝았습니다.";
+      }
+
+      if (data.news) {
+        document.getElementById('newsReporterInfo').innerHTML = `<br>📰 ${data.news}`;
+      } else {
+        document.getElementById('newsReporterInfo').innerHTML = ``;
+      }
+      
+      document.getElementById('newspaperModal').classList.remove('hidden');
     });
     
     socket.on('evidence_received', (txt) => { 
