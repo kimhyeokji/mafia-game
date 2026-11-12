@@ -47,7 +47,8 @@ function startPhaseTimer(room, durationSec, onEndCallback) {
 function checkWinCondition(room) {
   const alive = room.players.filter(p => !p.isDead);
   const mafiaKillers = alive.filter(p => p.role === 'mafia').length; 
-  const mafiaTeam = alive.filter(p => ['mafia', 'spy', 'madam'].includes(p.role)).length;
+  // [마피아 연인]도 마피아 팀의 머릿수로 계산
+  const mafiaTeam = alive.filter(p => ['mafia', 'spy', 'madam'].includes(p.role) || p.isMafiaLover).length;
   const citizenTeam = alive.length - mafiaTeam;
 
   if (mafiaKillers === 0) return '시민 팀';
@@ -60,7 +61,7 @@ function generateEvidence(room) {
   if (alive.length === 0) return null;
   
   const evidenceTypes = [];
-  const realMafias = room.players.filter(p => ['mafia', 'spy', 'madam'].includes(p.role) && !p.isDead);
+  const realMafias = room.players.filter(p => (['mafia', 'spy', 'madam'].includes(p.role) || p.isMafiaLover) && !p.isDead);
 
   if (alive.length >= 3 && realMafias.length > 0) {
     let m = realMafias[Math.floor(Math.random() * realMafias.length)];
@@ -94,6 +95,7 @@ function resolveNight(room) {
 
     if (actions.police && !blockedPlayers.has(actions.police.actorToken)) {
       let target = room.players.find(p => p.token === actions.police.targetToken);
+      // 스파이/마담/마피아연인은 경찰에게 어떻게 보일까? (기본 마피아만 '마피아'로, 나머진 시민팀으로 위장)
       let isMafia = target && target.role === 'mafia' ? true : false; 
       let actor = room.players.find(p => p.token === actions.police.actorToken);
       if(actor) io.to(actor.id).emit('system_msg', `🔍 조사 결과: [${target ? target.name : '알수없음'}]님은 [${isMafia ? '마피아' : '시민 팀(마피아 아님)'}] 입니다.`);
@@ -128,7 +130,7 @@ function resolveNight(room) {
       let p = room.players.find(p => p.token === tkn);
       if (p && !p.isDead) { 
         p.isDead = true; 
-        let team = ['mafia','spy','madam'].includes(p.role) ? '마피아 팀' : '시민 팀';
+        let team = ['mafia','spy','madam'].includes(p.role) || p.isMafiaLover ? '마피아 팀' : '시민 팀';
         killedNames.push(`${p.name}(${team})`); 
       }
     });
@@ -150,7 +152,8 @@ function resolveNight(room) {
     });
 
     io.to(room.code).emit('player_list_updated', room.players);
-    io.to(room.code).emit('night_result', { killedNames, winner, dayCount: room.dayCount, news: room.morningNews });
+    // [신문] UI 업데이트 전송
+    io.to(room.code).emit('night_result_newspaper', { killedNames, winner, dayCount: room.dayCount, news: room.morningNews });
 
     if (winner) return;
 
@@ -162,7 +165,7 @@ function resolveNight(room) {
       room.goldenBellActive = true;
       room.goldenBellAnswer = dots;
       io.to(room.code).emit('golden_bell_start', { dots });
-    }, 30000);
+    }, 15000); // [수정] 30초에서 15초로 단축시켜 확실하게 발동
 
     startPhaseTimer(room, room.talkTime, () => startVote1(room));
 
@@ -256,7 +259,7 @@ function tallyFinalVote(room) {
       } else {
         if (suspect) {
           suspect.isDead = true;
-          let sTeam = ['mafia','spy','madam'].includes(suspect.role) ? '마피아 팀' : '시민 팀';
+          let sTeam = ['mafia','spy','madam'].includes(suspect.role) || suspect.isMafiaLover ? '마피아 팀' : '시민 팀';
           resultMsg = `[처형 집행] 투표 결과에 따라 [${suspect.name}]님이 처형되었습니다.\n(정체: ${sTeam})`;
         }
         
@@ -264,7 +267,7 @@ function tallyFinalVote(room) {
           let other = room.players.find(p => p.role === 'lover' && p.token !== suspect.token);
           if(other) {
             other.isDead = true;
-            let oTeam = ['mafia','spy','madam'].includes(other.role) ? '마피아 팀' : '시민 팀';
+            let oTeam = ['mafia','spy','madam'].includes(other.role) || other.isMafiaLover ? '마피아 팀' : '시민 팀';
             resultMsg += `\n\n[연인 동반 사망] [${other.name}]님도 충격으로 함께 사망했습니다. (정체: ${oTeam})`;
           }
         }
@@ -280,7 +283,7 @@ function tallyFinalVote(room) {
     if (winner) {
       setTimeout(() => {
         io.to(room.code).emit('player_list_updated', room.players);
-        io.to(room.code).emit('night_result', { killedNames: [], winner: winner, dayCount: room.dayCount });
+        io.to(room.code).emit('night_result_newspaper', { killedNames: [], winner: winner, dayCount: room.dayCount });
       }, 4000);
       return;
     }
@@ -298,7 +301,7 @@ function enterNightPhase(room) {
   room.phase = 'NIGHT';
   room.nightActions = {};
   io.to(room.code).emit('phase_changed', { phase: 'NIGHT' });
-  startPhaseTimer(room, 60, () => resolveNight(room));
+  startPhaseTimer(room, 60, () => resolveNight(room)); // 밤 시간 60초 유지
 }
 
 io.on('connection', (socket) => {
@@ -333,16 +336,15 @@ io.on('connection', (socket) => {
       existingPlayer.id = socket.id;
       existingPlayer.isOffline = false;
       socket.join(roomCode);
-      if (['mafia','spy','madam'].includes(existingPlayer.role)) socket.join(roomCode + '_mafia');
+      if (['mafia','spy','madam'].includes(existingPlayer.role) || existingPlayer.isMafiaLover) socket.join(roomCode + '_mafia');
       if (existingPlayer.role === 'lover') socket.join(roomCode + '_lover');
       if (existingPlayer.isHost) room.hostId = socket.id;
       
       socket.emit('reconnect_success', { 
-        roomCode, role: existingPlayer.role, phase: room.phase, 
-        isDead: existingPlayer.isDead, isHost: existingPlayer.isHost,
+        roomCode, role: existingPlayer.role, isMafiaLover: existingPlayer.isMafiaLover,
+        phase: room.phase, isDead: existingPlayer.isDead, isHost: existingPlayer.isHost,
         players: room.players, suspectName: room.suspectName, suspectToken: room.suspectToken,
-        remainingTime: room.remainingTime,
-        skipVotesCount: room.skipVotesCount
+        remainingTime: room.remainingTime, skipVotesCount: room.skipVotesCount
       });
       
       if (room.phase === 'VOTE_RESULT' && room.voteResultData) {
@@ -362,7 +364,7 @@ io.on('connection', (socket) => {
     room.players.push({
       id: socket.id, name: playerName, token: newToken, role: null, 
       isDead: false, isOffline: false, isHost: isHost, whisperedToday: [], 
-      skipVote: false, extraVote: false,
+      skipVote: false, extraVote: false, isMafiaLover: false, // 흑화 연인 속성 추가
       playerNum: room.players.length + 1,
       avatar: AVATARS[Math.floor(Math.random() * AVATARS.length)]
     });
@@ -380,7 +382,6 @@ io.on('connection', (socket) => {
 
   socket.on('join_room', ({ roomCode, playerName, token }) => joinOrReconnect(roomCode, playerName, token, false));
 
-  // [추가] 대기실에서 아바타 커스텀 변경 적용
   socket.on('change_avatar', ({ roomCode, newAvatar }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'LOBBY') return;
@@ -405,25 +406,39 @@ io.on('connection', (socket) => {
       else { roles.push('citizen'); }
     }
     
+    // [로미오와 줄리엣 로직] 연인이 2명 배정되었을 경우, 30% 확률로 한 명을 마피아 팀으로 강제 흑화
+    let loverIndices = [];
+    roles.forEach((r, idx) => { if (r === 'lover') loverIndices.push(idx); });
+    let selectedMafiaLoverIndex = -1;
+    if (loverIndices.length === 2 && Math.random() < 0.3) {
+       selectedMafiaLoverIndex = loverIndices[Math.floor(Math.random() * 2)];
+    }
+
     let roleCounts = {};
     roles.forEach(r => roleCounts[r] = (roleCounts[r] || 0) + 1);
     
     let mTeam = ['mafia','spy','madam'].filter(r=>roleCounts[r]).map(r=>`${rName[r]} ${roleCounts[r]}`).join(', ');
     let cTeam = ['police','doctor','reporter','politician','hunter','medium','lover','citizen'].filter(r=>roleCounts[r]).map(r=>`${rName[r]} ${roleCounts[r]}`).join(', ');
     let mTotal = ['mafia','spy','madam'].reduce((a,b)=>a+(roleCounts[b]||0), 0);
+    // 마피아 연인이 탄생했다면 통계 보정 (스포일러가 되지 않도록 숫자에 은밀히 반영)
+    if (selectedMafiaLoverIndex !== -1) { mTotal += 1; }
     let cTotal = pCount - mTotal;
 
     let startMsg = `총 ${pCount}명 직업 배정 완료! [🔴마피아 팀 ${mTotal}명 / 🔵시민 팀 ${cTotal}명]\n(상세: ${mTeam} vs ${cTeam})`;
 
-    roles.sort(() => Math.random() - 0.5);
+    // 랜덤 섞기 전, 마피아 연인 속성을 같이 묶기 위해 객체로 변환
+    let roleObjects = roles.map((r, i) => ({ role: r, isML: i === selectedMafiaLoverIndex }));
+    roleObjects.sort(() => Math.random() - 0.5);
 
     room.players.forEach((p, idx) => {
-      p.role = roles[idx];
-      io.to(p.id).emit('role_assigned', { role: p.role });
+      p.role = roleObjects[idx].role;
+      p.isMafiaLover = roleObjects[idx].isML;
+      
+      io.to(p.id).emit('role_assigned', { role: p.role, isMafiaLover: p.isMafiaLover });
       
       const targetSocket = io.sockets.sockets.get(p.id);
       if (targetSocket) {
-        if (['mafia', 'spy', 'madam'].includes(p.role)) targetSocket.join(roomCode + '_mafia');
+        if (['mafia', 'spy', 'madam'].includes(p.role) || p.isMafiaLover) targetSocket.join(roomCode + '_mafia');
         if (p.role === 'lover') targetSocket.join(roomCode + '_lover');
       }
     });
@@ -440,8 +455,7 @@ io.on('connection', (socket) => {
   socket.on('skip_vote_toggle', ({ roomCode, state }) => {
     const room = rooms[roomCode];
     if (!room || room.phase !== 'DAY_TALK') return;
-    
-    if (Date.now() - room.dayStartTime < 60000) return;
+    if (Date.now() - room.dayStartTime < 60000) return; // 60초 쿨타임
     
     let p = room.players.find(p => p.id === socket.id);
     if (p && !p.isDead) {
@@ -543,9 +557,9 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode]; if (!room || room.phase !== 'NIGHT') return;
     const me = room.players.find(p => p.id === socket.id);
     room.nightActions[actionType] = { actorToken: me.token, targetToken: targetToken };
-    if (actionType === 'mafia') {
+    if (actionType === 'mafia' || me.isMafiaLover) { // 마피아 핫라인을 쓰는 직업에게 알림
       let target = room.players.find(p => p.token === targetToken);
-      io.to(roomCode + '_mafia').emit('system_msg', `🔪 타깃 지목 완료: [${target ? target.name : '알수없음'}]`);
+      io.to(roomCode + '_mafia').emit('system_msg', `🔪 누군가의 타깃 지목: [${target ? target.name : '알수없음'}]`);
     }
   });
 
